@@ -24,13 +24,13 @@ services:
       - key: MAIL_PORT
         value: "587"
       - key: MAIL_USERNAME
-        value: rrqkh61@gmail.com
+        sync: false
       - key: MAIL_PASSWORD
-        value: yipwybzleruvvjic
+        sync: false
       - key: MAIL_ENCRYPTION
         value: tls
       - key: MAIL_FROM_ADDRESS
-        value: rrqkh61@gmail.com
+        sync: false
       - key: MAIL_FROM_NAME
         value: "Admin OTP"
       - key: ADMIN_EMAIL
