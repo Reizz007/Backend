@@ -50,7 +50,7 @@ class AuthController extends Controller
                         <div style='font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; padding: 12px 20px; background: #070a12; border-radius: 10px; display: inline-block; font-family: monospace; border: 1px solid rgba(56, 189, 248, 0.3);'>
                             {$otp}
                         </div>
-                        <p style='color: #64748b; font-size: 12px; margin: 14px 0 0;'>⏱️ Valid for 10 minutes. Do not share this code.</p>
+                        <p style='color: #64748b; font-size: 12px; margin: 14px 0 0;'>⏱️ Valid for 1 minute. Do not share this code.</p>
                     </div>
 
                     <div style='border-top: 1px solid #1e293b; padding-top: 18px; text-align: center;'>
@@ -149,7 +149,7 @@ class AuthController extends Controller
      */
     protected function saveOtp(string $email, string $otp): void
     {
-        Cache::put('otp_' . $email, $otp, now()->addMinutes(10));
+        Cache::put('otp_' . $email, $otp, now()->addMinutes(1));
         try {
             $path = storage_path('app/otps.json');
             $dir = dirname($path);
@@ -159,7 +159,7 @@ class AuthController extends Controller
             $otps = file_exists($path) ? json_decode(file_get_contents($path), true) ?: [] : [];
             $otps[$email] = [
                 'otp' => (string) $otp,
-                'expires_at' => time() + 600,
+                'expires_at' => time() + 60,
             ];
             @file_put_contents($path, json_encode($otps));
         } catch (\Throwable $e) {}
