@@ -17,4 +17,22 @@ services:
         value: stderr
       - key: DB_CONNECTION
         value: sqlite
+      - key: MAIL_MAILER
+        value: smtp
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        value: rrqkh61@gmail.com
+      - key: MAIL_PASSWORD
+        value: yipwybzleruvvjic
+      - key: MAIL_ENCRYPTION
+        value: tls
+      - key: MAIL_FROM_ADDRESS
+        value: rrqkh61@gmail.com
+      - key: MAIL_FROM_NAME
+        value: "Admin OTP"
+      - key: ADMIN_EMAIL
+        value: chetranicky@gmail.com
 
