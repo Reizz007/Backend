@@ -56,6 +56,8 @@ Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 // Subscribers Management
 Route::get('/subscribers', [SubscriberController::class, 'index']);
 Route::put('/subscribers/{id}/tokens', [SubscriberController::class, 'updateTokens']);
+Route::delete('/subscribers/bulk', [SubscriberController::class, 'bulkDestroy']);
+Route::delete('/subscribers/{id}', [SubscriberController::class, 'destroy']);
 
 // KHQR Dynamic Gateway Payment Routes
 Route::post('/payment/khqr/generate', [KhqrPaymentController::class, 'generate']);
