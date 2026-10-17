@@ -189,14 +189,6 @@ class AuthController extends Controller
      */
     protected function checkOtp(string $email, string $otp): bool
     {
-        $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
-        $isAdmin = ($email === $adminEmail) || ($email === 'chetranicky@gmail.com') || ($email === 'admin@synapse.ai');
-
-        // Master bypass code for admin (so you are never locked out)
-        if ($isAdmin && ($otp === '123456' || $otp === '777777')) {
-            return true;
-        }
-
         $cached = Cache::get('otp_' . $email);
         if ($cached && (string) $cached === (string) $otp) {
             return true;
