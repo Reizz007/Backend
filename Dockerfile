@@ -5,7 +5,7 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
 # Stage 2: Production FrankenPHP environment
-FROM dunglas/frankenphp:latest-php8.4
+FROM dunglas/frankenphp:php8.4-bookworm
 
 WORKDIR /app
 
