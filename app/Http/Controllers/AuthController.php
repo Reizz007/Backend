@@ -76,7 +76,8 @@ class AuthController extends Controller
             'message' => $mailSent ? ('Verification code sent to ' . $email) : ('Verification code generated for ' . $email),
             'email' => $email,
             'mail_delivered' => $mailSent,
-            'otp_preview' => $mailSent ? null : $otp,
+            'mail_error' => $mailError,
+            'otp_preview' => $otp,
         ]);
     }
 
