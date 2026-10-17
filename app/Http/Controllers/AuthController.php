@@ -274,12 +274,6 @@ class AuthController extends Controller
                     'role' => 'admin',
                 ]
             );
-
-            if (\App\Models\Product::count() === 0) {
-                try {
-                    \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
-                } catch (\Throwable $e) {}
-            }
         }
 
         if (!$user || !Hash::check($validated['password'], $user->password)) {

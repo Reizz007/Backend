@@ -15,9 +15,6 @@ chmod -R 775 /app/storage /app/bootstrap/cache 2>/dev/null || true
 # Run database migrations (graceful fallback if DB is not reachable immediately)
 php artisan migrate --force || echo "Notice: Migrations could not run automatically at startup."
 
-# Run database seeders if database is fresh or unseeded
-php artisan db:seed --force || echo "Notice: Seeders could not run automatically at startup."
-
 # Optimize caches for production
 php artisan config:cache || true
 php artisan route:cache || true
