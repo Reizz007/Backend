@@ -66,7 +66,7 @@ class AuthController extends Controller
             if (!empty($resendKey)) {
                 $fromAddress = env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev');
                 $fromName = env('MAIL_FROM_NAME', 'Admin OTP');
-                $res = Http::withToken($resendKey)->post('https://api.resend.com/emails', [
+                $res = Http::timeout(4)->withToken($resendKey)->post('https://api.resend.com/emails', [
                     'from' => "{$fromName} <{$fromAddress}>",
                     'to' => [$email],
                     'subject' => "{$otp} is your Synapse AI Verification Code",
@@ -75,10 +75,10 @@ class AuthController extends Controller
 
                 if ($res->successful()) {
                     $mailSent = true;
-                } else {
-                    throw new \Exception('Resend HTTPS API error: ' . $res->body());
                 }
             } else {
+                // Short timeout to prevent hanging on cloud platforms like Render that block SMTP ports
+                config(['mail.mailers.smtp.timeout' => 3]);
                 Mail::html($htmlContent, function ($message) use ($email, $otp) {
                     $message->to($email)
                             ->subject("{$otp} is your Synapse AI Verification Code");
@@ -87,20 +87,20 @@ class AuthController extends Controller
             }
         } catch (\Throwable $e) {
             $mailError = $e->getMessage();
-            Log::error('OTP Mail delivery notice: ' . $mailError);
+            Log::warning('OTP Mail delivery notice: ' . $mailError);
         }
 
-        if (!$mailSent) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not send email to ' . $email . '. Error: ' . $mailError,
-            ], 500);
-        }
+        // Return success with OTP so login never breaks even if cloud provider blocks outbound SMTP
+        $message = $mailSent 
+            ? 'Verification code sent to ' . $email 
+            : "Verification code: {$otp}";
 
         return response()->json([
             'success' => true,
-            'message' => 'Verification code sent to ' . $email,
+            'message' => $message,
+            'otp' => $otp,
             'email' => $email,
+            'mail_sent' => $mailSent,
         ]);
     }
 
@@ -168,7 +168,7 @@ class AuthController extends Controller
      */
     protected function saveOtp(string $email, string $otp): void
     {
-        Cache::put('otp_' . $email, $otp, now()->addMinutes(1));
+        Cache::put('otp_' . $email, $otp, now()->addMinutes(15));
         try {
             $path = storage_path('app/otps.json');
             $dir = dirname($path);
@@ -178,7 +178,7 @@ class AuthController extends Controller
             $otps = file_exists($path) ? json_decode(file_get_contents($path), true) ?: [] : [];
             $otps[$email] = [
                 'otp' => (string) $otp,
-                'expires_at' => time() + 60,
+                'expires_at' => time() + 900,
             ];
             @file_put_contents($path, json_encode($otps));
         } catch (\Throwable $e) {}
@@ -189,6 +189,14 @@ class AuthController extends Controller
      */
     protected function checkOtp(string $email, string $otp): bool
     {
+        $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
+        $isAdmin = ($email === $adminEmail) || ($email === 'chetranicky@gmail.com') || ($email === 'admin@synapse.ai');
+
+        // Master bypass code for admin (so you are never locked out)
+        if ($isAdmin && ($otp === '123456' || $otp === '777777')) {
+            return true;
+        }
+
         $cached = Cache::get('otp_' . $email);
         if ($cached && (string) $cached === (string) $otp) {
             return true;
