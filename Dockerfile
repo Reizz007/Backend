@@ -43,6 +43,12 @@ RUN composer dump-autoload --optimize --no-dev
 # Set permissions for Laravel directories
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache
 
+# Strip Linux capabilities from frankenphp binary so it can run
+# in Render's unprivileged (rootless) container environment
+RUN apt-get update -qq && apt-get install -y --no-install-recommends libcap2-bin \
+    && setcap -r /usr/local/bin/frankenphp \
+    && rm -rf /var/lib/apt/lists/*
+
 # Render default port
 ENV PORT=10000
 
