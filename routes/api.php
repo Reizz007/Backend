@@ -79,3 +79,27 @@ Route::match(['get', 'post'], '/setup/seed', function () {
         ], 500);
     }
 });
+
+// Outbound Connectivity Diagnostics Endpoint
+Route::get('/diagnostics/mail', function () {
+    $ports = [587, 465, 2525, 80, 443];
+    $results = [];
+    foreach ($ports as $port) {
+        $t1 = microtime(true);
+        $fp = @fsockopen('smtp.gmail.com', $port, $errno, $errstr, 2);
+        $time = round((microtime(true) - $t1) * 1000);
+        if ($fp) {
+            $results[$port] = "OPEN ({$time}ms)";
+            fclose($fp);
+        } else {
+            $results[$port] = "BLOCKED ($errstr)";
+        }
+    }
+    return response()->json([
+        'environment' => app()->environment(),
+        'mail_mailer' => config('mail.default'),
+        'mail_host' => config('mail.mailers.smtp.host'),
+        'mail_port' => config('mail.mailers.smtp.port'),
+        'port_tests' => $results,
+    ]);
+});
