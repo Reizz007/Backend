@@ -45,7 +45,7 @@ return [
             'port' => (int) env('MAIL_PORT', 587),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
-            'password' => env('MAIL_PASSWORD', 'yipwybzleruvvjic'),
+            'password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
             'timeout' => 15,
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
