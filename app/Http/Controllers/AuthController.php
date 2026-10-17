@@ -66,7 +66,7 @@ class AuthController extends Controller
             if (!empty($resendKey)) {
                 $fromAddress = env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev');
                 $fromName = env('MAIL_FROM_NAME', 'Admin OTP');
-                $res = Http::timeout(4)->withToken($resendKey)->post('https://api.resend.com/emails', [
+                $res = Http::timeout(10)->withToken($resendKey)->post('https://api.resend.com/emails', [
                     'from' => "{$fromName} <{$fromAddress}>",
                     'to' => [$email],
                     'subject' => "{$otp} is your Synapse AI Verification Code",
@@ -77,17 +77,47 @@ class AuthController extends Controller
                     $mailSent = true;
                 }
             } else {
-                // Short timeout to prevent hanging on cloud platforms like Render that block SMTP ports
-                config(['mail.mailers.smtp.timeout' => 3]);
-                Mail::html($htmlContent, function ($message) use ($email, $otp) {
-                    $message->to($email)
-                            ->subject("{$otp} is your Synapse AI Verification Code");
-                });
-                $mailSent = true;
+                // Ensure proper credentials and timeout
+                config([
+                    'mail.mailers.smtp.host' => env('MAIL_HOST', 'smtp.gmail.com'),
+                    'mail.mailers.smtp.port' => (int) env('MAIL_PORT', 587),
+                    'mail.mailers.smtp.encryption' => env('MAIL_ENCRYPTION', 'tls'),
+                    'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
+                    'mail.mailers.smtp.password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
+                    'mail.mailers.smtp.timeout' => 15,
+                ]);
+                app('mail.manager')->forgetMailers();
+
+                try {
+                    Mail::html($htmlContent, function ($message) use ($email, $otp) {
+                        $message->to($email)
+                                ->subject("{$otp} is your Synapse AI Verification Code");
+                    });
+                    $mailSent = true;
+                } catch (\Throwable $err587) {
+                    Log::warning('SMTP 587 failed, attempting failover to 465 SSL: ' . $err587->getMessage());
+
+                    // Failover to Port 465 SSL
+                    config([
+                        'mail.mailers.smtp.host' => 'smtp.gmail.com',
+                        'mail.mailers.smtp.port' => 465,
+                        'mail.mailers.smtp.encryption' => 'ssl',
+                        'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
+                        'mail.mailers.smtp.password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
+                        'mail.mailers.smtp.timeout' => 15,
+                    ]);
+                    app('mail.manager')->forgetMailers();
+
+                    Mail::html($htmlContent, function ($message) use ($email, $otp) {
+                        $message->to($email)
+                                ->subject("{$otp} is your Synapse AI Verification Code");
+                    });
+                    $mailSent = true;
+                }
             }
         } catch (\Throwable $e) {
             $mailError = $e->getMessage();
-            Log::warning('OTP Mail delivery notice: ' . $mailError);
+            Log::error('OTP Mail delivery notice: ' . $mailError);
         }
 
         // Return success with OTP so login never breaks even if cloud provider blocks outbound SMTP
