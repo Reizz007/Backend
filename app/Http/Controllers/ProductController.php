@@ -227,4 +227,42 @@ class ProductController extends Controller
             'message' => 'Product deleted successfully',
         ]);
     }
+
+    /**
+     * Delete all uncategorized products
+     */
+    public function destroyUncategorized(): JsonResponse
+    {
+        $deleted = Product::whereNull('category_id')
+            ->orWhere('category_slug', 'uncategorized')
+            ->orWhere('category_slug', '')
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Successfully deleted {$deleted} uncategorized products",
+            'deleted_count' => $deleted,
+        ]);
+    }
+
+    /**
+     * Bulk delete products
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $ids = $request->input('ids', []);
+        if (!empty($ids) && is_array($ids)) {
+            Product::whereIn('id', $ids)
+                ->orWhereIn('slug', $ids)
+                ->orWhereIn('product_id', $ids)
+                ->delete();
+        } elseif ($request->input('all') === true) {
+            Product::query()->delete();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Products deleted successfully',
+        ]);
+    }
 }

@@ -96,15 +96,20 @@ class CategoryController extends Controller
         ]);
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
         $category = Category::where('id', $id)->orWhere('slug', $id)->firstOrFail();
 
-        // Nullify foreign key on products
-        $category->products()->update([
-            'category_id' => null,
-            'category_slug' => 'uncategorized',
-        ]);
+        // If requested to delete products or if cascade is set, delete them
+        if ($request->boolean('delete_products') || $request->input('cascade') === true) {
+            $category->products()->delete();
+        } else {
+            // Nullify foreign key on products
+            $category->products()->update([
+                'category_id' => null,
+                'category_slug' => 'uncategorized',
+            ]);
+        }
 
         $category->delete();
 

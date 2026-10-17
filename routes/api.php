@@ -31,6 +31,10 @@ Route::get('/auth/me', [AuthController::class, 'me'])->middleware('auth:sanctum'
 Route::apiResource('categories', CategoryController::class);
 
 // Products / Tools CRUD API
+Route::delete('/products/uncategorized', [ProductController::class, 'destroyUncategorized']);
+Route::delete('/tools/uncategorized', [ProductController::class, 'destroyUncategorized']);
+Route::delete('/products/bulk', [ProductController::class, 'bulkDestroy']);
+Route::delete('/tools/bulk', [ProductController::class, 'bulkDestroy']);
 Route::apiResource('products', ProductController::class);
 
 // Backward-compatible routes for existing frontend
