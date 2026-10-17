@@ -68,16 +68,20 @@ class AuthController extends Controller
             $mailSent = true;
         } catch (\Throwable $e) {
             $mailError = $e->getMessage();
-            Log::warning('OTP Mail delivery notice: ' . $mailError);
+            Log::error('OTP Mail delivery notice: ' . $mailError);
+        }
+
+        if (!$mailSent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not send email to ' . $email . '. Error: ' . $mailError,
+            ], 500);
         }
 
         return response()->json([
             'success' => true,
-            'message' => $mailSent ? ('Verification code sent to ' . $email) : ('Verification code generated for ' . $email),
+            'message' => 'Verification code sent to ' . $email,
             'email' => $email,
-            'mail_delivered' => $mailSent,
-            'mail_error' => $mailError,
-            'otp_preview' => $otp,
         ]);
     }
 
