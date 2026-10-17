@@ -120,17 +120,17 @@ class AuthController extends Controller
             Log::error('OTP Mail delivery notice: ' . $mailError);
         }
 
-        // Return success with OTP so login never breaks even if cloud provider blocks outbound SMTP
-        $message = $mailSent 
-            ? 'Verification code sent to ' . $email 
-            : "Verification code: {$otp}";
+        if (!$mailSent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not send verification email: ' . $mailError,
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => $message,
-            'otp' => $otp,
+            'message' => 'Verification code sent to ' . $email,
             'email' => $email,
-            'mail_sent' => $mailSent,
         ]);
     }
 
