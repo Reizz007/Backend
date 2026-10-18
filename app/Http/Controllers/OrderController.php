@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Subscriber;
+use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -48,6 +49,13 @@ class OrderController extends Controller
             'status' => $validated['status'] ?? 'Verified',
             'api_key' => $apiKey,
         ]);
+
+        // Trigger Telegram Alert
+        try {
+            TelegramService::sendOrderAlert($order, 'New Order Placed');
+        } catch (\Throwable $e) {
+            // graceful failover, never block order creation
+        }
 
         // Auto create/update subscriber record
         if (!empty($order->customer_email)) {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Subscriber;
 use App\Services\KhqrService;
+use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -67,6 +68,13 @@ class KhqrPaymentController extends Controller
             ]
         );
 
+        // Send Telegram alert for new payment request
+        try {
+            TelegramService::sendOrderAlert($order, 'New KHQR Payment Created');
+        } catch (\Throwable $e) {
+            // graceful fallback
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Payment request generated successfully',
@@ -102,8 +110,18 @@ class KhqrPaymentController extends Controller
 
         // If client sends confirmation or manual verification
         if ($request->boolean('confirm') || $request->input('confirm') === 'true' || $request->input('confirm') == '1' || $order->status === 'Verified') {
+            $wasAlreadyVerified = ($order->getOriginal('status') === 'Verified');
             $order->status = 'Verified';
             $order->save();
+
+            // Send Telegram payment confirmation alert if newly verified
+            if (!$wasAlreadyVerified) {
+                try {
+                    TelegramService::sendOrderAlert($order, 'KHQR Payment Confirmed & Verified');
+                } catch (\Throwable $e) {
+                    // graceful fallback
+                }
+            }
 
             // Auto-enroll subscriber
             if (!empty($order->customer_email)) {

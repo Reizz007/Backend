@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,6 +24,11 @@ class SettingController extends Controller
         $khqrProfileId = Setting::get('khqr_profile_id', config('services.khqr.profile_id', 'tW6PHjgPyzISFi3KK22hKZ57rag1cWHS'));
         $khqrSecretKey = Setting::get('khqr_secret_key', config('services.khqr.secret_key', 'zsFq7SWHV4gYFSAdfg2ud8WV747tBOei'));
 
+        // Telegram Notification Credentials
+        $telegramBotToken = Setting::get('telegram_bot_token', env('TELEGRAM_BOT_TOKEN', ''));
+        $telegramChatId = Setting::get('telegram_chat_id', env('TELEGRAM_CHAT_ID', ''));
+        $telegramEnabled = (bool) Setting::get('telegram_enabled', !empty($telegramBotToken) && !empty($telegramChatId));
+
         $settings = [
             'abaPayLink' => $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
@@ -32,6 +38,9 @@ class SettingController extends Controller
             'maintenanceMode' => (bool) $maintenanceMode,
             'systemStatus' => $systemStatus,
             'promoCodes' => $promoCodes,
+            'telegramBotToken' => $telegramBotToken,
+            'telegramChatId' => $telegramChatId,
+            'telegramEnabled' => $telegramEnabled,
         ];
 
         return response()->json([
@@ -40,6 +49,9 @@ class SettingController extends Controller
             'abaPayLink' => $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
+            'telegramBotToken' => $telegramBotToken,
+            'telegramChatId' => $telegramChatId,
+            'telegramEnabled' => $telegramEnabled,
         ]);
     }
 
@@ -70,6 +82,57 @@ class SettingController extends Controller
             Setting::set('promo_codes', $request->promoCodes);
         }
 
+        // Telegram Settings
+        if ($request->has('telegramBotToken') || $request->has('telegram_bot_token') || $request->has('token')) {
+            $token = $request->input('telegramBotToken', $request->input('telegram_bot_token', $request->input('token')));
+            Setting::set('telegram_bot_token', (string) $token);
+        }
+        if ($request->has('telegramChatId') || $request->has('telegram_chat_id') || $request->has('chat_id')) {
+            $chatId = $request->input('telegramChatId', $request->input('telegram_chat_id', $request->input('chat_id')));
+            Setting::set('telegram_chat_id', (string) $chatId);
+        }
+        if ($request->has('telegramEnabled') || $request->has('telegram_enabled')) {
+            $enabled = $request->input('telegramEnabled', $request->input('telegram_enabled'));
+            Setting::set('telegram_enabled', (bool) $enabled);
+        }
+
         return $this->getSettings();
+    }
+
+    /**
+     * Test connection to Telegram Bot API with current or provided credentials.
+     */
+    public function testTelegram(Request $request): JsonResponse
+    {
+        $token = $request->input('botToken') ?: $request->input('token') ?: Setting::get('telegram_bot_token');
+        $chatId = $request->input('chatId') ?: $request->input('chat_id') ?: Setting::get('telegram_chat_id');
+
+        if (empty($token) || empty($chatId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide both Telegram Bot Token and Chat ID to run connection test.',
+            ], 422);
+        }
+
+        $testText = "🚀 <b>Synapse AI — Telegram Alert Connection Verified!</b>\n";
+        $testText .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $testText .= "✅ <b>Status:</b> Connected to Admin Bot\n";
+        $testText .= "🔔 <b>Notifications:</b> Order & Payment alerts are active\n";
+        $testText .= "🕒 <i>Timestamp: " . now()->format('Y-m-d H:i:s') . " UTC</i>";
+
+        $result = TelegramService::sendMessage($testText, (string) $chatId, (string) $token);
+
+        if ($result['success']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Test alert sent! Check your Telegram chat or channel.',
+                'data' => $result['data'] ?? null,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $result['message'] ?? 'Failed to send message via Telegram Bot API.',
+        ], 400);
     }
 }
