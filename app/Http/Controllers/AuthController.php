@@ -82,8 +82,8 @@ class AuthController extends Controller
                     'mail.mailers.smtp.host' => env('MAIL_HOST', 'smtp.gmail.com'),
                     'mail.mailers.smtp.port' => (int) env('MAIL_PORT', 587),
                     'mail.mailers.smtp.encryption' => env('MAIL_ENCRYPTION', 'tls'),
-                    'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
-                    'mail.mailers.smtp.password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
+                    'mail.mailers.smtp.username' => env('MAIL_USERNAME'),
+                    'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
                     'mail.mailers.smtp.timeout' => 15,
                 ]);
                 app('mail.manager')->forgetMailers();
@@ -102,8 +102,8 @@ class AuthController extends Controller
                         'mail.mailers.smtp.host' => 'smtp.gmail.com',
                         'mail.mailers.smtp.port' => 465,
                         'mail.mailers.smtp.encryption' => 'ssl',
-                        'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
-                        'mail.mailers.smtp.password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
+                        'mail.mailers.smtp.username' => env('MAIL_USERNAME'),
+                        'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
                         'mail.mailers.smtp.timeout' => 15,
                     ]);
                     app('mail.manager')->forgetMailers();
