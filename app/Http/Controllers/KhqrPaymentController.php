@@ -8,6 +8,7 @@ use App\Services\KhqrService;
 use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class KhqrPaymentController extends Controller
@@ -34,6 +35,7 @@ class KhqrPaymentController extends Controller
             'transaction_id' => 'nullable|string',
             'paymentMethod' => 'nullable|string',
             'payment_method' => 'nullable|string',
+            'success_url' => 'nullable|string',
         ]);
 
         $amount = (float) $validated['amount'];
@@ -49,8 +51,20 @@ class KhqrPaymentController extends Controller
             : ('KHQR_' . substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -8));
         $remark = $validated['remark'] ?? $defaultRemark;
 
-        // Generate dynamic payment via service (valid signed SHA1 for khqr.cc)
-        $payment = $this->khqrService->createPayment($amount, $transactionId, $remark);
+        // Resolve frontend success_url for automatic redirection upon payment completion
+        $frontendOrigin = $request->header('origin') ?: $request->header('referer');
+        if ($frontendOrigin) {
+            $parsedHost = parse_url($frontendOrigin, PHP_URL_HOST);
+            $parsedScheme = parse_url($frontendOrigin, PHP_URL_SCHEME) ?: 'https';
+            $parsedPort = parse_url($frontendOrigin, PHP_URL_PORT);
+            $parsedOrigin = $parsedScheme . '://' . $parsedHost . ($parsedPort ? ':' . $parsedPort : '');
+        } else {
+            $parsedOrigin = 'https://ecommerce-2smr.onrender.com';
+        }
+        $successUrl = $validated['success_url'] ?? ($parsedOrigin . '/payment-success.html?tx=' . $transactionId);
+
+        // Generate dynamic payment via service (valid signed SHA1 for khqr.cc with success_url)
+        $payment = $this->khqrService->createPayment($amount, $transactionId, $remark, $successUrl);
 
         // Pre-create or record Order in database
         $order = Order::updateOrCreate(
@@ -87,6 +101,7 @@ class KhqrPaymentController extends Controller
             'profile_id' => $payment['profile_id'],
             'checkout_url' => $payment['checkout_url'],
             'iframe_url' => $payment['iframe_url'],
+            'success_url' => $payment['success_url'] ?? $successUrl,
             'order_id' => $order->id,
             'order_number' => $order->order_number,
             'order' => $order,
