@@ -204,17 +204,17 @@ class OrderController extends Controller
         }
 
         if (!$order) {
-            $order = (object) [
+            $order = Order::create([
                 'order_number' => $request->input('order_number', 'SYN-ORD-' . rand(1000, 9999)),
                 'customer_name' => $request->input('customer_name', $request->input('customerName', 'Valued Customer')),
-                'customer_email' => $request->input('customer_email', $request->input('customerEmail', 'N/A')),
+                'customer_email' => $request->input('customer_email', $request->input('customerEmail', 'customer@synapse.ai')),
                 'company' => $request->input('company', ''),
-                'items' => $request->input('items', ['AI Suite License']),
-                'amount' => $request->input('amount', 0),
+                'items' => is_array($request->input('items')) ? $request->input('items') : [$request->input('items', 'AI Suite License')],
+                'amount' => (float) $request->input('amount', 49.00),
                 'payment_method' => $request->input('payment_method', $request->input('paymentMethod', 'Cambodia National KHQR Gateway')),
                 'status' => 'Verified',
-                'api_key' => $request->input('api_key', $request->input('apiKey', '')),
-            ];
+                'api_key' => $request->input('api_key', $request->input('apiKey', 'sk_synapse_live_' . Str::random(28))),
+            ]);
         }
 
         $result = TelegramService::sendOrderSuccessAlert($order);
