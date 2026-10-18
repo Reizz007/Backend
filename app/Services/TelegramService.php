@@ -25,7 +25,7 @@ class TelegramService
 
         try {
             $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
-            $response = Http::timeout(10)->post($url, [
+            $response = Http::timeout(10)->withoutVerifying()->post($url, [
                 'chat_id' => $targetChatId,
                 'text' => $text,
                 'parse_mode' => 'HTML',
@@ -95,6 +95,51 @@ class TelegramService
         }
         $text .= "⚡ <b>Status:</b> <b>{$status}</b>\n";
         $text .= "🕒 <b>Time:</b> " . now()->format('Y-m-d H:i:s') . " UTC\n";
+
+        return self::sendMessage($text);
+    }
+
+    /**
+     * Send specific "Order Successful & Verified!" Telegram Alert.
+     */
+    public static function sendOrderSuccessAlert($order): array
+    {
+        $enabled = Setting::get('telegram_enabled', true);
+        if (!$enabled) {
+            return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
+        }
+
+        $orderNumber = $order->order_number ?? ($order['order_number'] ?? 'N/A');
+        $customerName = $order->customer_name ?? ($order['customer_name'] ?? 'Valued Customer');
+        $customerEmail = $order->customer_email ?? ($order['customer_email'] ?? 'N/A');
+        $company = $order->company ?? ($order['company'] ?? '');
+        $amount = number_format((float) ($order->amount ?? ($order['amount'] ?? 0)), 2);
+        $method = $order->payment_method ?? ($order['payment_method'] ?? 'Cambodia National KHQR Gateway');
+        $apiKey = $order->api_key ?? ($order['api_key'] ?? '');
+        $items = $order->items ?? ($order['items'] ?? []);
+        $itemsList = is_array($items) ? implode(', ', $items) : (string) $items;
+
+        $text = "🎉 <b>Order Successful & Verified!</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "💳 <b>Order #:</b> <code>{$orderNumber}</code>\n";
+        $text .= "👤 <b>Customer:</b> " . htmlspecialchars($customerName) . "\n";
+        $text .= "📧 <b>Email:</b> <code>" . htmlspecialchars($customerEmail) . "</code>\n";
+        if (!empty($company)) {
+            $text .= "🏢 <b>Company:</b> " . htmlspecialchars($company) . "\n";
+        }
+        $text .= "💰 <b>Amount Paid:</b> <b>\${$amount} USD</b>\n";
+        $text .= "🏷 <b>Payment Method:</b> " . htmlspecialchars($method) . "\n";
+        if (!empty($itemsList)) {
+            $text .= "📦 <b>Items Purchased:</b> " . htmlspecialchars($itemsList) . "\n";
+        }
+        if (!empty($apiKey)) {
+            $maskedKey = substr($apiKey, 0, 14) . '...' . substr($apiKey, -6);
+            $text .= "🔑 <b>License Key:</b> <code>{$maskedKey}</code>\n";
+        }
+        $text .= "⚡ <b>Status:</b> <b>Verified & Activated ✅</b>\n";
+        $text .= "🕒 <b>Time:</b> " . now()->format('Y-m-d H:i:s') . " UTC\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "🚀 <i>Synapse AI Store Notification</i>";
 
         return self::sendMessage($text);
     }

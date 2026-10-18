@@ -52,7 +52,11 @@ class OrderController extends Controller
 
         // Trigger Telegram Alert
         try {
-            TelegramService::sendOrderAlert($order, 'New Order Placed');
+            if ($order->status === 'Verified') {
+                TelegramService::sendOrderSuccessAlert($order);
+            } else {
+                TelegramService::sendOrderAlert($order, 'New Order Placed');
+            }
         } catch (\Throwable $e) {
             // graceful failover, never block order creation
         }
@@ -180,6 +184,44 @@ class OrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Orders and transactions deleted successfully',
+        ]);
+    }
+
+    /**
+     * Trigger "Order Successful & Verified!" Telegram Alert manually from client or webhook
+     */
+    public function notifySuccess(Request $request, $id = null): JsonResponse
+    {
+        $order = null;
+        if ($id) {
+            $order = Order::where('id', $id)->orWhere('order_number', $id)->first();
+        }
+        if (!$order && $request->has('order_number')) {
+            $order = Order::where('order_number', $request->input('order_number'))->first();
+        }
+        if (!$order && $request->has('id')) {
+            $order = Order::where('id', $request->input('id'))->orWhere('order_number', $request->input('id'))->first();
+        }
+
+        if (!$order) {
+            $order = (object) [
+                'order_number' => $request->input('order_number', 'SYN-ORD-' . rand(1000, 9999)),
+                'customer_name' => $request->input('customer_name', $request->input('customerName', 'Valued Customer')),
+                'customer_email' => $request->input('customer_email', $request->input('customerEmail', 'N/A')),
+                'company' => $request->input('company', ''),
+                'items' => $request->input('items', ['AI Suite License']),
+                'amount' => $request->input('amount', 0),
+                'payment_method' => $request->input('payment_method', $request->input('paymentMethod', 'Cambodia National KHQR Gateway')),
+                'status' => 'Verified',
+                'api_key' => $request->input('api_key', $request->input('apiKey', '')),
+            ];
+        }
+
+        $result = TelegramService::sendOrderSuccessAlert($order);
+
+        return response()->json([
+            'success' => $result['success'] ?? true,
+            'message' => $result['message'] ?? 'Order Successful & Verified alert sent to Telegram.',
         ]);
     }
 }

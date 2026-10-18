@@ -114,10 +114,10 @@ class KhqrPaymentController extends Controller
             $order->status = 'Verified';
             $order->save();
 
-            // Send Telegram payment confirmation alert if newly verified
-            if (!$wasAlreadyVerified) {
+            // Send "Order Successful & Verified!" Telegram Alert
+            if (!$wasAlreadyVerified || $request->boolean('confirm') || $request->input('confirm') === 'true') {
                 try {
-                    TelegramService::sendOrderAlert($order, 'KHQR Payment Confirmed & Verified');
+                    TelegramService::sendOrderSuccessAlert($order);
                 } catch (\Throwable $e) {
                     // graceful fallback
                 }

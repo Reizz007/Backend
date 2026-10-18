@@ -49,6 +49,8 @@ Route::get('/orders', [OrderController::class, 'index']);
 Route::post('/orders', [OrderController::class, 'store']);
 Route::delete('/orders/bulk', [OrderController::class, 'bulkDestroy']);
 Route::get('/orders/{id}', [OrderController::class, 'show']);
+Route::post('/orders/notify-success', [OrderController::class, 'notifySuccess']);
+Route::post('/orders/{id}/notify-success', [OrderController::class, 'notifySuccess']);
 Route::put('/orders/{id}/activate', [OrderController::class, 'activate']);
 Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
 Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
