@@ -12,9 +12,8 @@ mkdir -p /app/storage/framework/{sessions,views,cache} /app/storage/logs /app/bo
 chown -R www-data:www-data /app/storage /app/bootstrap/cache /app/database 2>/dev/null || true
 chmod -R 775 /app/storage /app/bootstrap/cache 2>/dev/null || true
 
-# Run database migrations and seed essential store data (graceful fallback if DB is not reachable immediately)
+# Run database migrations (graceful fallback if DB is not reachable immediately)
 php artisan migrate --force || echo "Notice: Migrations could not run automatically at startup."
-php artisan db:seed --force || echo "Notice: Database seed could not run automatically at startup."
 
 # Optimize caches for production
 php artisan config:cache || true
