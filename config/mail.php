@@ -14,7 +14,7 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'smtp'),
+    'default' => env('MAIL_MAILER', 'log'),
 
     /*
     |--------------------------------------------------------------------------
@@ -44,9 +44,9 @@ return [
             'host' => env('MAIL_HOST', 'smtp.gmail.com'),
             'port' => (int) env('MAIL_PORT', 587),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
-            'timeout' => 20,
+            'username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
+            'password' => env('MAIL_PASSWORD', 'ikowlciyetgjggil'),
+            'timeout' => 8,
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
@@ -112,7 +112,7 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'noreply@synapse.ai'),
+        'address' => env('MAIL_FROM_ADDRESS', 'rrqkh61@gmail.com'),
         'name' => env('MAIL_FROM_NAME', 'Admin OTP'),
     ],
 
