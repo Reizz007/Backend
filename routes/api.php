@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\KhqrPaymentController;
@@ -74,7 +75,8 @@ Route::post('/settings/test-telegram', [SettingController::class, 'testTelegram'
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);
 
-
+// AI Support Chat Assistant
+Route::post('/ai-chat', [AiChatController::class, 'chat']);
 
 // Outbound Connectivity Diagnostics Endpoint
 Route::get('/diagnostics/mail', function () {
@@ -91,6 +93,7 @@ Route::get('/diagnostics/mail', function () {
             $results[$port] = "BLOCKED ($errstr)";
         }
     }
+
     return response()->json([
         'environment' => app()->environment(),
         'mail_mailer' => config('mail.default'),

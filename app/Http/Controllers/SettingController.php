@@ -12,7 +12,7 @@ class SettingController extends Controller
     public function getSettings(): JsonResponse
     {
         $abaPayLink = Setting::get('aba_pay_link', '');
-        $announcementText = Setting::get('announcement_text', 'Synapse Omni-LLM 4.5 & VideoGen 4D are now live! Get 20% OFF all annual subscriptions with code NEURON20');
+        $announcementText = Setting::get('announcement_text', 'Synapse Omni-LLM 4.5 & VideoGen 4D are now live! Instant perpetual licenses & Cambodian KHQR payment.');
         $maintenanceMode = Setting::get('maintenance_mode', false);
         $systemStatus = Setting::get('system_status', 'All AI Clusters Operational (99.99% SLA)');
         $promoCodes = Setting::get('promo_codes', [
@@ -27,7 +27,7 @@ class SettingController extends Controller
         // Telegram Notification Credentials
         $telegramBotToken = Setting::get('telegram_bot_token', env('TELEGRAM_BOT_TOKEN', ''));
         $telegramChatId = Setting::get('telegram_chat_id', env('TELEGRAM_CHAT_ID', ''));
-        $telegramEnabled = (bool) Setting::get('telegram_enabled', !empty($telegramBotToken) && !empty($telegramChatId));
+        $telegramEnabled = (bool) Setting::get('telegram_enabled', ! empty($telegramBotToken) && ! empty($telegramChatId));
 
         $settings = [
             'abaPayLink' => $abaPayLink,
@@ -118,7 +118,7 @@ class SettingController extends Controller
         $testText .= "━━━━━━━━━━━━━━━━━━━━━\n";
         $testText .= "✅ <b>Status:</b> Connected to Admin Bot\n";
         $testText .= "🔔 <b>Notifications:</b> Order & Payment alerts are active\n";
-        $testText .= "🕒 <i>Timestamp: " . now()->format('Y-m-d H:i:s') . " UTC</i>";
+        $testText .= '🕒 <i>Timestamp: '.now()->format('Y-m-d H:i:s').' UTC</i>';
 
         $result = TelegramService::sendMessage($testText, (string) $chatId, (string) $token);
 

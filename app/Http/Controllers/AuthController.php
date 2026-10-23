@@ -38,7 +38,7 @@ class AuthController extends Controller
             <div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #0b0f19; color: #f1f5f9; border-radius: 16px; border: 1px solid #1e293b;'>
                 <div style='text-align: center; margin-bottom: 24px;'>
                     <div style='display: inline-block; padding: 10px 18px; border-radius: 999px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); color: #38bdf8; font-weight: 700; font-size: 13px; letter-spacing: 1px;'>
-                        SYNAPSE.AI AUTH
+                        DYZZSTORE AUTH
                     </div>
                     <h2 style='color: #f8fafc; margin: 16px 0 6px; font-size: 22px; font-weight: 700;'>Login Verification Code</h2>
                     <p style='color: #94a3b8; font-size: 14px; margin: 0;'>Use the code below to complete your sign in</p>
@@ -63,13 +63,13 @@ class AuthController extends Controller
 
         try {
             $resendKey = env('RESEND_API_KEY');
-            if (!empty($resendKey)) {
+            if (! empty($resendKey)) {
                 $fromAddress = env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev');
                 $fromName = env('MAIL_FROM_NAME', 'Admin OTP');
                 $res = Http::timeout(10)->withToken($resendKey)->post('https://api.resend.com/emails', [
                     'from' => "{$fromName} <{$fromAddress}>",
                     'to' => [$email],
-                    'subject' => "{$otp} is your Synapse AI Verification Code",
+                    'subject' => "{$otp} is your Dyzzstore Verification Code",
                     'html' => $htmlContent,
                 ]);
 
@@ -91,11 +91,11 @@ class AuthController extends Controller
                 try {
                     Mail::html($htmlContent, function ($message) use ($email, $otp) {
                         $message->to($email)
-                                ->subject("{$otp} is your Synapse AI Verification Code");
+                            ->subject("{$otp} is your Dyzzstore Verification Code");
                     });
                     $mailSent = true;
                 } catch (\Throwable $err587) {
-                    Log::warning('SMTP 587 failed, attempting failover to 465 SSL: ' . $err587->getMessage());
+                    Log::warning('SMTP 587 failed, attempting failover to 465 SSL: '.$err587->getMessage());
 
                     // Failover to Port 465 SSL
                     config([
@@ -110,26 +110,26 @@ class AuthController extends Controller
 
                     Mail::html($htmlContent, function ($message) use ($email, $otp) {
                         $message->to($email)
-                                ->subject("{$otp} is your Synapse AI Verification Code");
+                            ->subject("{$otp} is your Dyzzstore Verification Code");
                     });
                     $mailSent = true;
                 }
             }
         } catch (\Throwable $e) {
             $mailError = $e->getMessage();
-            Log::error('OTP Mail delivery notice: ' . $mailError);
+            Log::error('OTP Mail delivery notice: '.$mailError);
         }
 
-        if (!$mailSent) {
+        if (! $mailSent) {
             return response()->json([
                 'success' => false,
-                'message' => 'Could not send verification email: ' . $mailError,
+                'message' => 'Could not send verification email: '.$mailError,
             ], 500);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Verification code sent to ' . $email,
+            'message' => 'Verification code sent to '.$email,
             'email' => $email,
         ]);
     }
@@ -147,7 +147,7 @@ class AuthController extends Controller
         $email = strtolower(trim($validated['email']));
         $otp = trim($validated['otp']);
 
-        if (!$this->checkOtp($email, $otp)) {
+        if (! $this->checkOtp($email, $otp)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid or expired verification code. Please check your email or request a new code.',
@@ -159,11 +159,11 @@ class AuthController extends Controller
 
         // Check if admin email configured in .env or default chetranicky@gmail.com
         $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
-        $isAdmin = ($email === $adminEmail) || ($email === 'chetranicky@gmail.com') || ($email === 'admin@synapse.ai');
+        $isAdmin = ($email === $adminEmail) || ($email === 'chetranicky@gmail.com') || ($email === 'admin@synapse.ai') || ($email === 'admin@dyzzstore.com');
 
         // Find or create User
         $user = User::firstOrNew(['email' => $email]);
-        if (!$user->exists) {
+        if (! $user->exists) {
             $user->name = $isAdmin ? 'Master Admin' : explode('@', $email)[0];
             $user->password = Hash::make(Str::random(32));
         }
@@ -171,7 +171,7 @@ class AuthController extends Controller
         if ($isAdmin) {
             $user->role = 'admin';
             $user->name = 'Master Admin';
-        } else if (empty($user->role)) {
+        } elseif (empty($user->role)) {
             $user->role = 'user';
         }
 
@@ -198,11 +198,11 @@ class AuthController extends Controller
      */
     protected function saveOtp(string $email, string $otp): void
     {
-        Cache::put('otp_' . $email, $otp, now()->addMinutes(15));
+        Cache::put('otp_'.$email, $otp, now()->addMinutes(15));
         try {
             $path = storage_path('app/otps.json');
             $dir = dirname($path);
-            if (!is_dir($dir)) {
+            if (! is_dir($dir)) {
                 @mkdir($dir, 0755, true);
             }
             $otps = file_exists($path) ? json_decode(file_get_contents($path), true) ?: [] : [];
@@ -211,7 +211,8 @@ class AuthController extends Controller
                 'expires_at' => time() + 900,
             ];
             @file_put_contents($path, json_encode($otps));
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
     }
 
     /**
@@ -219,7 +220,7 @@ class AuthController extends Controller
      */
     protected function checkOtp(string $email, string $otp): bool
     {
-        $cached = Cache::get('otp_' . $email);
+        $cached = Cache::get('otp_'.$email);
         if ($cached && (string) $cached === (string) $otp) {
             return true;
         }
@@ -235,7 +236,8 @@ class AuthController extends Controller
                     }
                 }
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
 
         return false;
     }
@@ -245,7 +247,7 @@ class AuthController extends Controller
      */
     protected function clearOtp(string $email): void
     {
-        Cache::forget('otp_' . $email);
+        Cache::forget('otp_'.$email);
         try {
             $path = storage_path('app/otps.json');
             if (file_exists($path)) {
@@ -253,7 +255,8 @@ class AuthController extends Controller
                 unset($otps[$email]);
                 @file_put_contents($path, json_encode($otps));
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
     }
 
     public function login(Request $request): JsonResponse
@@ -265,7 +268,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $validated['email'])->first();
 
-        if (!$user && (strtolower($validated['email']) === 'admin@synapse.ai' || strtolower($validated['email']) === strtolower(env('ADMIN_EMAIL', 'chetranicky@gmail.com'))) && $validated['password'] === 'admin123') {
+        if (! $user && (strtolower($validated['email']) === 'admin@synapse.ai' || strtolower($validated['email']) === 'admin@dyzzstore.com' || strtolower($validated['email']) === strtolower(env('ADMIN_EMAIL', 'chetranicky@gmail.com'))) && $validated['password'] === 'admin123') {
             $user = User::updateOrCreate(
                 ['email' => $validated['email']],
                 [
@@ -276,7 +279,7 @@ class AuthController extends Controller
             );
         }
 
-        if (!$user || !Hash::check($validated['password'], $user->password)) {
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid email or password.',

@@ -41,8 +41,8 @@ class TelegramService
             }
 
             $errorData = $response->json();
-            $errorMessage = $errorData['description'] ?? ('Telegram API error with HTTP status ' . $response->status());
-            Log::warning('Telegram send error: ' . $errorMessage);
+            $errorMessage = $errorData['description'] ?? ('Telegram API error with HTTP status '.$response->status());
+            Log::warning('Telegram send error: '.$errorMessage);
 
             return [
                 'success' => false,
@@ -50,10 +50,11 @@ class TelegramService
                 'status' => $response->status(),
             ];
         } catch (\Throwable $e) {
-            Log::error('Telegram notification exception: ' . $e->getMessage());
+            Log::error('Telegram notification exception: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => 'Network error connecting to Telegram API: ' . $e->getMessage(),
+                'message' => 'Network error connecting to Telegram API: '.$e->getMessage(),
             ];
         }
     }
@@ -64,7 +65,7 @@ class TelegramService
     public static function sendOrderAlert($order, string $event = 'New Order Received'): array
     {
         $enabled = Setting::get('telegram_enabled', true);
-        if (!$enabled) {
+        if (! $enabled) {
             return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
         }
 
@@ -83,18 +84,18 @@ class TelegramService
         $text = "<b>{$icon} {$event}!</b>\n";
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
         $text .= "💳 <b>Order #:</b> <code>{$orderNumber}</code>\n";
-        $text .= "👤 <b>Customer:</b> " . htmlspecialchars($customerName) . "\n";
-        $text .= "📧 <b>Email:</b> <code>" . htmlspecialchars($customerEmail) . "</code>\n";
-        if (!empty($company)) {
-            $text .= "🏢 <b>Company:</b> " . htmlspecialchars($company) . "\n";
+        $text .= '👤 <b>Customer:</b> '.htmlspecialchars($customerName)."\n";
+        $text .= '📧 <b>Email:</b> <code>'.htmlspecialchars($customerEmail)."</code>\n";
+        if (! empty($company)) {
+            $text .= '🏢 <b>Company:</b> '.htmlspecialchars($company)."\n";
         }
         $text .= "💰 <b>Amount:</b> <b>\${$amount} USD</b>\n";
-        $text .= "🏷 <b>Method:</b> " . htmlspecialchars($method) . "\n";
-        if (!empty($itemsList)) {
-            $text .= "📦 <b>Items:</b> " . htmlspecialchars($itemsList) . "\n";
+        $text .= '🏷 <b>Method:</b> '.htmlspecialchars($method)."\n";
+        if (! empty($itemsList)) {
+            $text .= '📦 <b>Items:</b> '.htmlspecialchars($itemsList)."\n";
         }
         $text .= "⚡ <b>Status:</b> <b>{$status}</b>\n";
-        $text .= "🕒 <b>Time:</b> " . now()->format('Y-m-d H:i:s') . " UTC\n";
+        $text .= '🕒 <b>Time:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
 
         return self::sendMessage($text);
     }
@@ -105,7 +106,7 @@ class TelegramService
     public static function sendOrderSuccessAlert($order): array
     {
         $enabled = Setting::get('telegram_enabled', true);
-        if (!$enabled) {
+        if (! $enabled) {
             return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
         }
 
@@ -122,24 +123,24 @@ class TelegramService
         $text = "🎉 <b>Order Successful & Verified!</b>\n";
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
         $text .= "💳 <b>Order #:</b> <code>{$orderNumber}</code>\n";
-        $text .= "👤 <b>Customer:</b> " . htmlspecialchars($customerName) . "\n";
-        $text .= "📧 <b>Email:</b> <code>" . htmlspecialchars($customerEmail) . "</code>\n";
-        if (!empty($company)) {
-            $text .= "🏢 <b>Company:</b> " . htmlspecialchars($company) . "\n";
+        $text .= '👤 <b>Customer:</b> '.htmlspecialchars($customerName)."\n";
+        $text .= '📧 <b>Email:</b> <code>'.htmlspecialchars($customerEmail)."</code>\n";
+        if (! empty($company)) {
+            $text .= '🏢 <b>Company:</b> '.htmlspecialchars($company)."\n";
         }
         $text .= "💰 <b>Amount Paid:</b> <b>\${$amount} USD</b>\n";
-        $text .= "🏷 <b>Payment Method:</b> " . htmlspecialchars($method) . "\n";
-        if (!empty($itemsList)) {
-            $text .= "📦 <b>Items Purchased:</b> " . htmlspecialchars($itemsList) . "\n";
+        $text .= '🏷 <b>Payment Method:</b> '.htmlspecialchars($method)."\n";
+        if (! empty($itemsList)) {
+            $text .= '📦 <b>Items Purchased:</b> '.htmlspecialchars($itemsList)."\n";
         }
-        if (!empty($apiKey)) {
-            $maskedKey = substr($apiKey, 0, 14) . '...' . substr($apiKey, -6);
+        if (! empty($apiKey)) {
+            $maskedKey = substr($apiKey, 0, 14).'...'.substr($apiKey, -6);
             $text .= "🔑 <b>License Key:</b> <code>{$maskedKey}</code>\n";
         }
         $text .= "⚡ <b>Status:</b> <b>Verified & Activated ✅</b>\n";
-        $text .= "🕒 <b>Time:</b> " . now()->format('Y-m-d H:i:s') . " UTC\n";
+        $text .= '🕒 <b>Time:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
-        $text .= "🚀 <i>Synapse AI Store Notification</i>";
+        $text .= '🚀 <i>Dyzzstore Notification</i>';
 
         return self::sendMessage($text);
     }
