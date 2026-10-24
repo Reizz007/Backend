@@ -71,6 +71,7 @@ Route::get('/payment/khqr/info', [KhqrPaymentController::class, 'info']);
 Route::get('/settings', [SettingController::class, 'getSettings']);
 Route::put('/settings', [SettingController::class, 'updateSettings']);
 Route::post('/settings/test-telegram', [SettingController::class, 'testTelegram']);
+Route::post('/settings/test-plasgate', [SettingController::class, 'testPlasgate']);
 
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);

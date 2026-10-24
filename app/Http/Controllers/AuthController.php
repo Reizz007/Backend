@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\PlasgateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,20 +16,60 @@ use Illuminate\Support\Str;
 class AuthController extends Controller
 {
     /**
-     * Send OTP Verification Code to Email using configured SMTP or Resend HTTPS
+     * Send OTP Verification Code to Email (via SMTP / Resend) or Phone (via Plasgate SMS)
      */
     public function sendOtp(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email' => 'required|email',
-        ]);
+        $input = trim((string) ($request->input('identifier') ?? $request->input('email') ?? $request->input('phone')));
 
-        $email = strtolower(trim($validated['email']));
+        if (empty($input)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide an email address or mobile phone number.',
+            ], 422);
+        }
+
+        // Determine if input is a phone number or an email
+        $isPhone = ! str_contains($input, '@') && preg_match('/^[0-9+\s\-()]{8,20}$/', $input);
 
         // Generate a 6-digit numeric OTP code
         $otp = (string) random_int(100000, 999999);
 
-        // Store OTP in Cache and file backup for 10 minutes
+        // 1. Phone SMS Delivery via Plasgate (https://cloudapi.plasgate.com/api/send)
+        if ($isPhone) {
+            $normalizedPhone = PlasgateService::normalizePhoneNumber($input);
+            $this->saveOtp($normalizedPhone, $otp);
+
+            $result = PlasgateService::sendOtp($normalizedPhone, $otp);
+
+            if (! $result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not send SMS verification code: '.$result['message'],
+                    'channel' => 'sms',
+                    'phone' => $normalizedPhone,
+                ], 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification code sent via SMS to '.$normalizedPhone,
+                'channel' => 'sms',
+                'target' => $normalizedPhone,
+                'phone' => $normalizedPhone,
+            ]);
+        }
+
+        // 2. Email Delivery via SMTP / Resend
+        $email = strtolower($input);
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The provided email address is invalid.',
+            ], 422);
+        }
+
+        // Store OTP in Cache and file backup for 15 minutes
         $this->saveOtp($email, $otp);
 
         $mailSent = false;
@@ -49,7 +90,7 @@ class AuthController extends Controller
                     <div style='font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; padding: 12px 20px; background: #070a12; border-radius: 10px; display: inline-block; font-family: monospace; border: 1px solid rgba(56, 189, 248, 0.3);'>
                         {$otp}
                     </div>
-                    <p style='color: #64748b; font-size: 12px; margin: 14px 0 0;'>⏱️ Valid for 1 minute. Do not share this code.</p>
+                    <p style='color: #64748b; font-size: 12px; margin: 14px 0 0;'>⏱️ Valid for 10 minutes. Do not share this code.</p>
                 </div>
 
                 <div style='border-top: 1px solid #1e293b; padding-top: 18px; text-align: center;'>
@@ -77,20 +118,25 @@ class AuthController extends Controller
                     $mailSent = true;
                 }
             } else {
-                // Ensure proper credentials and timeout
+                $fromAddress = env('MAIL_FROM_ADDRESS', 'rrqkh61@gmail.com');
+                $fromName = env('MAIL_FROM_NAME', 'Dyzzstore Auth');
+
                 config([
                     'mail.mailers.smtp.host' => env('MAIL_HOST', 'smtp.gmail.com'),
                     'mail.mailers.smtp.port' => (int) env('MAIL_PORT', 587),
                     'mail.mailers.smtp.encryption' => env('MAIL_ENCRYPTION', 'tls'),
-                    'mail.mailers.smtp.username' => env('MAIL_USERNAME'),
+                    'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
                     'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
                     'mail.mailers.smtp.timeout' => 15,
+                    'mail.from.address' => $fromAddress,
+                    'mail.from.name' => $fromName,
                 ]);
                 app('mail.manager')->forgetMailers();
 
                 try {
-                    Mail::html($htmlContent, function ($message) use ($email, $otp) {
-                        $message->to($email)
+                    Mail::html($htmlContent, function ($message) use ($email, $otp, $fromAddress, $fromName) {
+                        $message->from($fromAddress, $fromName)
+                            ->to($email)
                             ->subject("{$otp} is your Dyzzstore Verification Code");
                     });
                     $mailSent = true;
@@ -102,14 +148,17 @@ class AuthController extends Controller
                         'mail.mailers.smtp.host' => 'smtp.gmail.com',
                         'mail.mailers.smtp.port' => 465,
                         'mail.mailers.smtp.encryption' => 'ssl',
-                        'mail.mailers.smtp.username' => env('MAIL_USERNAME'),
+                        'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
                         'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
                         'mail.mailers.smtp.timeout' => 15,
+                        'mail.from.address' => $fromAddress,
+                        'mail.from.name' => $fromName,
                     ]);
                     app('mail.manager')->forgetMailers();
 
-                    Mail::html($htmlContent, function ($message) use ($email, $otp) {
-                        $message->to($email)
+                    Mail::html($htmlContent, function ($message) use ($email, $otp, $fromAddress, $fromName) {
+                        $message->from($fromAddress, $fromName)
+                            ->to($email)
                             ->subject("{$otp} is your Dyzzstore Verification Code");
                     });
                     $mailSent = true;
@@ -124,12 +173,15 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Could not send verification email: '.$mailError,
+                'channel' => 'email',
             ], 500);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Verification code sent to '.$email,
+            'channel' => 'email',
+            'target' => $email,
             'email' => $email,
         ]);
     }
@@ -139,33 +191,48 @@ class AuthController extends Controller
      */
     public function verifyOtp(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email' => 'required|email',
-            'otp' => 'required|string',
-        ]);
+        $input = trim((string) ($request->input('identifier') ?? $request->input('email') ?? $request->input('phone')));
+        $otp = trim((string) $request->input('otp'));
 
-        $email = strtolower(trim($validated['email']));
-        $otp = trim($validated['otp']);
-
-        if (! $this->checkOtp($email, $otp)) {
+        if (empty($input) || empty($otp)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid or expired verification code. Please check your email or request a new code.',
+                'message' => 'Please provide your email/phone and verification code.',
+            ], 422);
+        }
+
+        $isPhone = ! str_contains($input, '@') && preg_match('/^[0-9+\s\-()]{8,20}$/', $input);
+        $target = $isPhone ? PlasgateService::normalizePhoneNumber($input) : strtolower($input);
+
+        if (! $this->checkOtp($target, $otp)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired verification code. Please check your '.($isPhone ? 'SMS message' : 'email inbox').' or request a new code.',
             ], 422);
         }
 
         // Clean up OTP after successful verification
-        $this->clearOtp($email);
+        $this->clearOtp($target);
 
-        // Check if admin email configured in .env or default chetranicky@gmail.com
         $adminEmail = strtolower(trim(env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
-        $isAdmin = ($email === $adminEmail) || ($email === 'chetranicky@gmail.com') || ($email === 'admin@synapse.ai') || ($email === 'admin@dyzzstore.com');
+        $adminPhone = trim((string) env('ADMIN_PHONE', ''));
 
-        // Find or create User
-        $user = User::firstOrNew(['email' => $email]);
-        if (! $user->exists) {
-            $user->name = $isAdmin ? 'Master Admin' : explode('@', $email)[0];
-            $user->password = Hash::make(Str::random(32));
+        if ($isPhone) {
+            $userEmail = "{$target}@dyzzstore.user";
+            $isAdmin = (! empty($adminPhone) && $target === PlasgateService::normalizePhoneNumber($adminPhone));
+            $user = User::firstOrNew(['email' => $userEmail]);
+            if (! $user->exists) {
+                $user->name = 'User '.substr($target, -4);
+                $user->password = Hash::make(Str::random(32));
+            }
+        } else {
+            $userEmail = $target;
+            $isAdmin = ($userEmail === $adminEmail) || ($userEmail === 'chetranicky@gmail.com') || ($userEmail === 'admin@synapse.ai') || ($userEmail === 'admin@dyzzstore.com');
+            $user = User::firstOrNew(['email' => $userEmail]);
+            if (! $user->exists) {
+                $user->name = $isAdmin ? 'Master Admin' : explode('@', $userEmail)[0];
+                $user->password = Hash::make(Str::random(32));
+            }
         }
 
         if ($isAdmin) {
