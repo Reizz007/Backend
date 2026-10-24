@@ -26,6 +26,35 @@ class Category extends Model
         'display_order' => 'integer',
     ];
 
+    protected $appends = [
+        'status',
+    ];
+
+    public function getStatusAttribute(): string
+    {
+        return $this->is_active ? 'Active' : 'Inactive';
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Category $category) {
+            if (isset($category->attributes['status']) && ! $category->isDirty('is_active')) {
+                $category->is_active = strtolower((string) $category->attributes['status']) === 'active';
+                unset($category->attributes['status']);
+            }
+        });
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);

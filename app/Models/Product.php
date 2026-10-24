@@ -31,16 +31,41 @@ class Product extends Model
         'icon',
         'color',
         'status',
+        'is_active',
     ];
 
     protected $casts = [
         'capabilities' => 'array',
         'included_in_sub' => 'boolean',
+        'is_active' => 'boolean',
         'rating' => 'float',
         'reviews_count' => 'integer',
         'price_monthly' => 'float',
         'price_lifetime' => 'float',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Product $product) {
+            if ($product->isDirty('is_active') && ! $product->isDirty('status')) {
+                $product->status = $product->is_active ? 'Active' : 'Inactive';
+            } elseif ($product->isDirty('status') && ! $product->isDirty('is_active')) {
+                $product->is_active = strtolower((string) $product->status) === 'active';
+            } elseif ($product->is_active === null && ! empty($product->status)) {
+                $product->is_active = strtolower((string) $product->status) === 'active';
+            }
+        });
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
 
     protected $appends = [
         'priceMonthly',

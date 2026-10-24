@@ -9,10 +9,19 @@ use Illuminate\Support\Str;
 
 class CategoryController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $categories = Category::withCount('products')
-            ->orderBy('display_order')
+        $query = Category::withCount('products');
+
+        if ($request->has('status')) {
+            $query->where('is_active', strtolower((string) $request->input('status')) === 'active');
+        } elseif ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        } elseif ($request->boolean('active_only') || $request->query('only_active') === '1') {
+            $query->where('is_active', true);
+        }
+
+        $categories = $query->orderBy('display_order')
             ->orderBy('name')
             ->get();
 
@@ -24,6 +33,12 @@ class CategoryController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $input = $request->all();
+        if (isset($input['status']) && ! isset($input['is_active'])) {
+            $input['is_active'] = strtolower((string) $input['status']) === 'active';
+        }
+        $request->merge($input);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255|unique:categories,slug',
@@ -33,6 +48,7 @@ class CategoryController extends Controller
             'badge' => 'nullable|string',
             'display_order' => 'nullable|integer',
             'is_active' => 'nullable|boolean',
+            'status' => 'nullable|string',
         ]);
 
         if (empty($validated['slug'])) {
@@ -79,6 +95,12 @@ class CategoryController extends Controller
     {
         $category = Category::where('id', $id)->orWhere('slug', $id)->firstOrFail();
 
+        $input = $request->all();
+        if (isset($input['status']) && ! isset($input['is_active'])) {
+            $input['is_active'] = strtolower((string) $input['status']) === 'active';
+        }
+        $request->merge($input);
+
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|nullable|string|max:255|unique:categories,slug,'.$category->id,
@@ -88,6 +110,7 @@ class CategoryController extends Controller
             'badge' => 'nullable|string',
             'display_order' => 'nullable|integer',
             'is_active' => 'nullable|boolean',
+            'status' => 'nullable|string',
         ]);
 
         if (isset($validated['name']) && empty($validated['slug'])) {

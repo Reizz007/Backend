@@ -27,6 +27,25 @@ class ProductController extends Controller
             });
         }
 
+        if ($request->has('status') && $request->status !== 'all' && $request->status !== '') {
+            $statusVal = strtolower((string) $request->status);
+            $query->where(function ($q) use ($statusVal) {
+                if ($statusVal === 'active') {
+                    $q->where('is_active', true)->orWhereRaw('LOWER(status) = ?', ['active']);
+                } elseif ($statusVal === 'inactive') {
+                    $q->where('is_active', false)->orWhereRaw('LOWER(status) = ?', ['inactive']);
+                } else {
+                    $q->where('status', $statusVal);
+                }
+            });
+        } elseif ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        } elseif ($request->boolean('active_only') || $request->query('only_active') === '1') {
+            $query->where(function ($q) {
+                $q->where('is_active', true)->orWhereRaw('LOWER(status) = ?', ['active']);
+            });
+        }
+
         if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -66,6 +85,19 @@ class ProductController extends Controller
         if (isset($input['includedInSub']) && ! isset($input['included_in_sub'])) {
             $input['included_in_sub'] = $input['includedInSub'];
         }
+        if (isset($input['status'])) {
+            $statusNormalized = ucfirst(strtolower(trim((string) $input['status'])));
+            if (in_array($statusNormalized, ['Active', 'Inactive'], true)) {
+                $input['status'] = $statusNormalized;
+            }
+            if (! isset($input['is_active'])) {
+                $input['is_active'] = strtolower((string) $input['status']) === 'active';
+            }
+        } elseif (isset($input['is_active'])) {
+            $isActive = filter_var($input['is_active'], FILTER_VALIDATE_BOOLEAN);
+            $input['is_active'] = $isActive;
+            $input['status'] = $isActive ? 'Active' : 'Inactive';
+        }
         $request->merge($input);
 
         $validated = $request->validate([
@@ -89,6 +121,7 @@ class ProductController extends Controller
             'icon' => 'nullable|string',
             'color' => 'nullable|string',
             'status' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
         ]);
 
         if (empty($validated['slug'])) {
@@ -177,6 +210,19 @@ class ProductController extends Controller
         if (isset($input['includedInSub']) && ! isset($input['included_in_sub'])) {
             $input['included_in_sub'] = $input['includedInSub'];
         }
+        if (isset($input['status'])) {
+            $statusNormalized = ucfirst(strtolower(trim((string) $input['status'])));
+            if (in_array($statusNormalized, ['Active', 'Inactive'], true)) {
+                $input['status'] = $statusNormalized;
+            }
+            if (! isset($input['is_active'])) {
+                $input['is_active'] = strtolower((string) $input['status']) === 'active';
+            }
+        } elseif (isset($input['is_active'])) {
+            $isActive = filter_var($input['is_active'], FILTER_VALIDATE_BOOLEAN);
+            $input['is_active'] = $isActive;
+            $input['status'] = $isActive ? 'Active' : 'Inactive';
+        }
         $request->merge($input);
 
         $validated = $request->validate([
@@ -199,6 +245,7 @@ class ProductController extends Controller
             'icon' => 'nullable|string',
             'color' => 'nullable|string',
             'status' => 'nullable|string',
+            'is_active' => 'nullable|boolean',
         ]);
 
         if (! empty($validated['category_id'])) {
