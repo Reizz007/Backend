@@ -8,23 +8,29 @@ use Illuminate\Support\Facades\Log;
 
 class PlasgateService
 {
-    public const DEFAULT_BASE_URL = 'https://cloudapi.plasgate.com/api/send';
+    public const DEFAULT_BASE_URL = 'https://cloudapi.plasgate.com/rest/send';
 
-    public const FALLBACK_BASE_URL = 'https://cloudapi.plasgate.com/rest/send';
+    public const FALLBACK_BASE_URL = 'https://cloudapi.plasgate.com/api/send';
 
     /**
      * Normalize Cambodian or international phone numbers to E.164 without '+'
      * Examples:
      *   "012 345 678" -> "85512345678"
      *   "+855 98 765 432" -> "85598765432"
-     *   "85512345678" -> "85512345678"
+     *   "+880 1964 129976" -> "8801964129976"
      */
     public static function normalizePhoneNumber(string $phone): string
     {
+        $trimmed = trim($phone);
         // Strip everything except digits
-        $digits = preg_replace('/\D/', '', $phone);
+        $digits = preg_replace('/\D/', '', $trimmed);
 
-        // If starts with leading '0', replace with '855' (Cambodia country code)
+        // If user already specified an international '+' country code
+        if (str_starts_with($trimmed, '+')) {
+            return $digits;
+        }
+
+        // If starts with leading '0', assume Cambodia country code 855
         if (str_starts_with($digits, '0')) {
             $digits = '855'.substr($digits, 1);
         }
@@ -73,7 +79,7 @@ class PlasgateService
             ];
         }
 
-        // Target URL with private_key query parameter
+        // Primary Target URL with private_key query parameter
         $url = self::DEFAULT_BASE_URL.'?private_key='.urlencode(trim((string) $privateKey));
 
         $payload = [
@@ -119,9 +125,22 @@ class PlasgateService
                 ];
             }
 
-            $errorMessage = $responseData['message']
-                ?? $responseData['error']
-                ?? ('Plasgate API error (HTTP '.$response->status().')');
+            // Extract error message
+            $rawMsg = '';
+            if (is_array($responseData) && isset($responseData['message'])) {
+                $rawMsg = is_string($responseData['message']) ? $responseData['message'] : json_encode($responseData['message']);
+            } elseif (is_array($responseData) && isset($responseData['error'])) {
+                $rawMsg = is_string($responseData['error']) ? $responseData['error'] : json_encode($responseData['error']);
+            } else {
+                $rawMsg = $response->body() ?: ('HTTP '.$response->status());
+            }
+
+            // Detailed guidance for known Plasgate errors
+            if (str_contains($rawMsg, 'Invalid Sender')) {
+                $errorMessage = "Invalid Sender Name ('{$senderId}'). In your Plasgate account (portal.plasgate.com), check your registered/approved Sender Name and update it in Admin Settings.";
+            } else {
+                $errorMessage = $rawMsg;
+            }
 
             Log::warning("Plasgate SMS error to {$normalizedPhone}: {$errorMessage}", [
                 'status' => $response->status(),
@@ -133,7 +152,7 @@ class PlasgateService
                 'message' => $errorMessage,
                 'status' => $response->status(),
                 'normalized_phone' => $normalizedPhone,
-                'data' => $responseData,
+                'data' => $responseData ?: ['raw' => $response->body()],
             ];
         } catch (\Throwable $e) {
             Log::error('Plasgate SMS exception: '.$e->getMessage(), [
