@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\PlasgateService;
 use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 
 class SettingController extends Controller
 {
@@ -72,6 +75,16 @@ class SettingController extends Controller
         $plasgateSenderId = Setting::get('plasgate_sender_id', env('PLASGATE_SENDER_ID', 'SMS Info'));
         $plasgateEnabled = (bool) Setting::get('plasgate_enabled', ! empty($plasgatePrivateKey) && ! empty($plasgateSecretKey));
 
+        // Admin Profile & Security
+        $adminEmail = Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'));
+
+        // Gmail SMTP OTP Mailer Configuration
+        $mailUsername = Setting::get('mail_username', env('MAIL_USERNAME', 'rrqkh61@gmail.com'));
+        $mailPassword = Setting::get('mail_password', env('MAIL_PASSWORD', ''));
+        $mailFromName = Setting::get('mail_from_name', env('MAIL_FROM_NAME', 'Dyzzstore Auth'));
+        $mailFromAddress = Setting::get('mail_from_address', env('MAIL_FROM_ADDRESS', $mailUsername));
+        $safeMailPassword = $settingsHidden ? '••••••••••••••••' : $mailPassword;
+
         // If settings are hidden on this device, mask sensitive credentials
         $safeTelegramToken = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $telegramBotToken;
         $safeTelegramChatId = $settingsHidden ? '••••••••' : $telegramChatId;
@@ -105,6 +118,11 @@ class SettingController extends Controller
             'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
             'plasgateEnabled' => $plasgateEnabled,
+            'adminEmail' => $adminEmail,
+            'mailUsername' => $mailUsername,
+            'mailPassword' => $safeMailPassword,
+            'mailFromName' => $mailFromName,
+            'mailFromAddress' => $mailFromAddress,
             'singleDeviceLocked' => $singleDeviceLocked,
             'isPrimaryDevice' => $isPrimaryDevice,
             'settingsHidden' => $settingsHidden,
@@ -244,6 +262,44 @@ class SettingController extends Controller
         if ($request->has('plasgateEnabled') || $request->has('plasgate_enabled')) {
             $enabled = $request->input('plasgateEnabled', $request->input('plasgate_enabled'));
             Setting::set('plasgate_enabled', (bool) $enabled);
+        }
+
+        // Admin Security: Change Email & Password
+        if ($request->has('adminEmail') && ! empty($request->adminEmail)) {
+            $newAdminEmail = strtolower(trim((string) $request->adminEmail));
+            if (filter_var($newAdminEmail, FILTER_VALIDATE_EMAIL)) {
+                Setting::set('admin_email', $newAdminEmail);
+                User::where('role', 'admin')->where('email', '!=', 'admin@synapse.ai')->update(['email' => $newAdminEmail]);
+            }
+        }
+        if ($request->has('adminPassword') && ! empty(trim((string) $request->adminPassword))) {
+            $newPw = trim((string) $request->adminPassword);
+            if (strlen($newPw) >= 6) {
+                $hash = Hash::make($newPw);
+                Setting::set('admin_password_hash', $hash);
+                Setting::set('admin_password_updated_at', now()->toIso8601String());
+                User::where('role', 'admin')->update(['password' => $hash]);
+            }
+        }
+
+        // Gmail Send OTP (SMTP) Settings
+        if ($request->has('mailUsername') || $request->has('mail_username')) {
+            $val = $request->input('mailUsername', $request->input('mail_username'));
+            Setting::set('mail_username', trim((string) $val));
+        }
+        if ($request->has('mailPassword') || $request->has('mail_password')) {
+            $val = $request->input('mailPassword', $request->input('mail_password'));
+            if (! empty($val) && ! str_contains((string) $val, '••••')) {
+                Setting::set('mail_password', trim((string) $val));
+            }
+        }
+        if ($request->has('mailFromName') || $request->has('mail_from_name')) {
+            $val = $request->input('mailFromName', $request->input('mail_from_name'));
+            Setting::set('mail_from_name', trim((string) $val));
+        }
+        if ($request->has('mailFromAddress') || $request->has('mail_from_address')) {
+            $val = $request->input('mailFromAddress', $request->input('mail_from_address'));
+            Setting::set('mail_from_address', trim((string) $val));
         }
 
         return $this->getSettings($request);
@@ -512,5 +568,67 @@ class SettingController extends Controller
             'success' => true,
             'message' => 'Intruder report dispatched to Telegram.',
         ]);
+    }
+
+    /**
+     * Test sending email OTP via Gmail SMTP.
+     */
+    public function testGmail(Request $request): JsonResponse
+    {
+        $targetEmail = $request->input('to') ?: $request->input('email') ?: Setting::get('admin_email', 'chetranicky@gmail.com');
+        $smtpUser = $request->input('mailUsername') ?: Setting::get('mail_username', env('MAIL_USERNAME', 'rrqkh61@gmail.com'));
+        $smtpPass = $request->input('mailPassword') ?: Setting::get('mail_password', env('MAIL_PASSWORD'));
+        $fromName = $request->input('mailFromName') ?: Setting::get('mail_from_name', 'Dyzzstore Auth');
+        $fromAddress = $request->input('mailFromAddress') ?: Setting::get('mail_from_address', $smtpUser);
+
+        if (empty($smtpUser) || empty($smtpPass)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please provide both Gmail Address and Gmail 16-character App Password before testing.',
+            ], 422);
+        }
+
+        try {
+            config([
+                'mail.mailers.smtp.host' => 'smtp.gmail.com',
+                'mail.mailers.smtp.port' => 587,
+                'mail.mailers.smtp.encryption' => 'tls',
+                'mail.mailers.smtp.username' => $smtpUser,
+                'mail.mailers.smtp.password' => $smtpPass,
+                'mail.mailers.smtp.timeout' => 8,
+                'mail.from.address' => $fromAddress,
+                'mail.from.name' => $fromName,
+            ]);
+            app('mail.manager')->forgetMailers();
+
+            $testOtp = (string) random_int(100000, 999999);
+            $subject = "{$testOtp} is your Test Gmail OTP Verification Code";
+            $html = "
+                <div style='font-family:sans-serif;background:#0b0f19;color:#fff;padding:24px;border-radius:12px;max-width:480px;margin:auto;'>
+                    <h2 style='color:#38bdf8;text-align:center;'>Gmail SMTP Connection Verified ✅</h2>
+                    <p style='color:#94a3b8;text-align:center;'>Your Gmail OTP configuration is working perfectly.</p>
+                    <div style='text-align:center;margin:20px 0;'>
+                        <span style='font-size:32px;font-family:monospace;letter-spacing:6px;color:#38bdf8;background:#1e293b;padding:10px 20px;border-radius:8px;'>{$testOtp}</span>
+                    </div>
+                    <p style='color:#64748b;font-size:12px;text-align:center;'>Sent from {$smtpUser} to {$targetEmail} at ".now()->toIso8601String().'</p>
+                </div>
+            ';
+
+            Mail::html($html, function ($message) use ($targetEmail, $fromAddress, $fromName, $subject) {
+                $message->from($fromAddress, $fromName)
+                    ->to($targetEmail)
+                    ->subject($subject);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => "Test OTP successfully delivered to {$targetEmail} via {$smtpUser}!",
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gmail SMTP error: '.$e->getMessage().'. Make sure you use a 16-character Google App Password (not your normal Gmail password).',
+            ], 400);
+        }
     }
 }

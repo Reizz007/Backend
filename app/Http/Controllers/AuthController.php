@@ -132,16 +132,18 @@ class AuthController extends Controller
                     $mailSent = true;
                 }
             } else {
-                $fromAddress = env('MAIL_FROM_ADDRESS', 'rrqkh61@gmail.com');
-                $fromName = env('MAIL_FROM_NAME', 'Dyzzstore Auth');
+                $smtpUser = Setting::get('mail_username', env('MAIL_USERNAME', 'rrqkh61@gmail.com'));
+                $smtpPass = Setting::get('mail_password', env('MAIL_PASSWORD'));
+                $fromAddress = Setting::get('mail_from_address', env('MAIL_FROM_ADDRESS', $smtpUser));
+                $fromName = Setting::get('mail_from_name', env('MAIL_FROM_NAME', 'Dyzzstore Auth'));
 
                 config([
-                    'mail.mailers.smtp.host' => env('MAIL_HOST', 'smtp.gmail.com'),
-                    'mail.mailers.smtp.port' => (int) env('MAIL_PORT', 587),
-                    'mail.mailers.smtp.encryption' => env('MAIL_ENCRYPTION', 'tls'),
-                    'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
-                    'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
-                    'mail.mailers.smtp.timeout' => 3, // Fast 3-second timeout to avoid frontend abort
+                    'mail.mailers.smtp.host' => Setting::get('mail_host', env('MAIL_HOST', 'smtp.gmail.com')),
+                    'mail.mailers.smtp.port' => (int) Setting::get('mail_port', env('MAIL_PORT', 587)),
+                    'mail.mailers.smtp.encryption' => Setting::get('mail_encryption', env('MAIL_ENCRYPTION', 'tls')),
+                    'mail.mailers.smtp.username' => $smtpUser,
+                    'mail.mailers.smtp.password' => $smtpPass,
+                    'mail.mailers.smtp.timeout' => 5,
                     'mail.from.address' => $fromAddress,
                     'mail.from.name' => $fromName,
                 ]);
@@ -343,24 +345,48 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $adminEmail = strtolower(trim((string) Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'))));
+        $adminPasswordHash = Setting::get('admin_password_hash');
+        $inputEmail = strtolower(trim((string) $validated['email']));
+        $inputPassword = (string) $validated['password'];
 
-        if (! $user && (strtolower($validated['email']) === 'admin@synapse.ai' || strtolower($validated['email']) === 'admin@dyzzstore.com' || strtolower($validated['email']) === strtolower(env('ADMIN_EMAIL', 'chetranicky@gmail.com'))) && $validated['password'] === 'admin123') {
-            $user = User::updateOrCreate(
-                ['email' => $validated['email']],
-                [
-                    'name' => 'Master Admin',
-                    'password' => Hash::make('admin123'),
-                    'role' => 'admin',
-                ]
-            );
+        $user = User::where('email', $inputEmail)->first();
+
+        // 1. Check against User record password
+        $passwordMatches = ($user && Hash::check($inputPassword, $user->password));
+
+        // 2. Check against custom Admin Password Hash in Setting
+        if (! $passwordMatches && ! empty($adminPasswordHash) && Hash::check($inputPassword, $adminPasswordHash)) {
+            $passwordMatches = true;
+            if ($user) {
+                $user->password = $adminPasswordHash;
+                $user->save();
+            }
         }
 
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        // 3. Fallback to default admin123 if custom password hasn't been set yet
+        if (! $passwordMatches && empty($adminPasswordHash) && $inputPassword === 'admin123') {
+            if ($inputEmail === $adminEmail || $inputEmail === 'admin@synapse.ai' || $inputEmail === 'admin@dyzzstore.com' || $inputEmail === 'chetranicky@gmail.com') {
+                $passwordMatches = true;
+            }
+        }
+
+        if (! $passwordMatches) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid email or password.',
             ], 401);
+        }
+
+        if (! $user) {
+            $user = User::updateOrCreate(
+                ['email' => $inputEmail],
+                [
+                    'name' => 'Master Admin',
+                    'password' => $adminPasswordHash ?: Hash::make($inputPassword),
+                    'role' => 'admin',
+                ]
+            );
         }
 
         $token = $user->createToken('admin-api-token')->plainTextToken;
