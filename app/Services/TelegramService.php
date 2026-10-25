@@ -146,22 +146,55 @@ class TelegramService
     }
 
     /**
+     * Resolve the Telegram chat and bot token for device security alerts.
+     * Prefers dedicated security group ID / token, falls back to default store bot/chat.
+     */
+    public static function getDeviceAlertTarget(?string $customGroupChatId = null, ?string $customBotToken = null): array
+    {
+        $groupChatId = $customGroupChatId ?: Setting::get('telegram_device_chat_id');
+        $botToken = $customBotToken ?: Setting::get('telegram_device_bot_token');
+
+        $finalChatId = ! empty($groupChatId) ? trim((string) $groupChatId) : trim((string) Setting::get('telegram_chat_id', env('TELEGRAM_CHAT_ID', '')));
+        $finalBotToken = ! empty($botToken) ? trim((string) $botToken) : trim((string) Setting::get('telegram_bot_token', env('TELEGRAM_BOT_TOKEN', '')));
+
+        return [
+            'chat_id' => $finalChatId,
+            'token' => $finalBotToken,
+            'is_group' => ! empty($groupChatId),
+        ];
+    }
+
+    /**
      * Send instant security alert to Telegram when a login occurs, especially on another device.
      */
     public static function sendLoginAlert(array $params): array
     {
         $enabled = Setting::get('telegram_enabled', true);
-        if (! $enabled) {
+        $deviceAlertsEnabled = Setting::get('telegram_device_alerts_enabled', true);
+        if (! $enabled || ! $deviceAlertsEnabled) {
             return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
         }
 
         $isAnotherDevice = ! empty($params['is_another_device']);
+        $alertOnNewDevice = Setting::get('telegram_alert_on_new_device', true);
+        $alertOnPrimary = Setting::get('telegram_alert_on_primary_login', true);
+
+        if ($isAnotherDevice && ! $alertOnNewDevice) {
+            return ['success' => true, 'message' => 'New device alerts suppressed by settings.'];
+        }
+
+        if (! $isAnotherDevice && ! $alertOnPrimary) {
+            return ['success' => true, 'message' => 'Primary device alerts suppressed by settings.'];
+        }
+
         $email = htmlspecialchars($params['user_email'] ?? 'N/A');
         $deviceName = htmlspecialchars($params['device_name'] ?? 'Unknown Device');
         $deviceId = htmlspecialchars($params['device_id'] ?? 'N/A');
         $ip = htmlspecialchars($params['ip_address'] ?? 'N/A');
         $settingsHidden = ! empty($params['settings_hidden']);
         $time = $params['time'] ?? now()->format('Y-m-d H:i:s').' UTC';
+
+        $target = self::getDeviceAlertTarget();
 
         if ($isAnotherDevice) {
             $text = "🚨 <b>SECURITY ALERT: Login from Another Device!</b>\n";
@@ -171,7 +204,7 @@ class TelegramService
             $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
             $text .= "🌐 <b>IP Address:</b> <code>{$ip}</code>\n";
             if ($settingsHidden) {
-                $text .= "🔒 <b>Access Protection:</b> <b>Settings tab is HIDDEN on this device!</b>\n";
+                $text .= "🔒 <b>Access Protection:</b> <b>Settings tab is HIDDEN & BLOCKED on this device!</b>\n";
             }
             $text .= "🕒 <b>Time:</b> {$time}\n";
             $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
@@ -181,12 +214,13 @@ class TelegramService
             $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
             $text .= "👤 <b>Account:</b> <code>{$email}</code>\n";
             $text .= "📱 <b>Device:</b> <b>{$deviceName}</b> (Authorized Primary Device)\n";
+            $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
             $text .= "🌐 <b>IP Address:</b> <code>{$ip}</code>\n";
-            $text .= "⚡ <b>Settings Access:</b> <b>Unlocked</b>\n";
+            $text .= "⚡ <b>Settings Access:</b> <b>Unlocked & Verified ✅</b>\n";
             $text .= "🕒 <b>Time:</b> {$time}\n";
         }
 
-        return self::sendMessage($text);
+        return self::sendMessage($text, $target['chat_id'], $target['token']);
     }
 
     /**
@@ -218,7 +252,8 @@ class TelegramService
     public static function sendDeviceAuthAlert(array $params): array
     {
         $enabled = Setting::get('telegram_enabled', true);
-        if (! $enabled) {
+        $deviceAlertsEnabled = Setting::get('telegram_device_alerts_enabled', true);
+        if (! $enabled || ! $deviceAlertsEnabled) {
             return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
         }
 
@@ -226,6 +261,8 @@ class TelegramService
         $deviceId = htmlspecialchars($params['device_id'] ?? 'N/A');
         $ip = htmlspecialchars($params['ip_address'] ?? 'N/A');
         $time = $params['time'] ?? now()->format('Y-m-d H:i:s').' UTC';
+
+        $target = self::getDeviceAlertTarget();
 
         $text = "🛡️ <b>Primary Authorized Device Updated!</b>\n";
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
@@ -237,6 +274,46 @@ class TelegramService
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
         $text .= '🚀 <i>Dyzzstore Security Manager</i>';
 
-        return self::sendMessage($text);
+        return self::sendMessage($text, $target['chat_id'], $target['token']);
+    }
+
+    /**
+     * Send test alert specifically to the Telegram Security / Device Alert Group.
+     */
+    public static function sendDeviceGroupTestAlert(?string $customGroupChatId = null, ?string $customBotToken = null): array
+    {
+        $target = self::getDeviceAlertTarget($customGroupChatId, $customBotToken);
+        $finalChatId = $target['chat_id'];
+        $finalToken = $target['token'];
+
+        if (empty($finalToken) || empty($finalChatId)) {
+            return [
+                'success' => false,
+                'message' => 'Please provide a Telegram Group Chat ID (e.g. -100xxxxxxxxxx) and ensure a Bot Token is set.',
+            ];
+        }
+
+        $primaryDeviceName = Setting::get('primary_device_name', 'Windows PC • Chrome');
+        $primaryDeviceId = Setting::get('primary_device_id', 'dev_nku878yn_mvncy0wo');
+
+        $text = "🚀 <b>Dyzzstore — Telegram Security Alert Group Connected!</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "✅ <b>Status:</b> Telegram Security Channel Connected Successfully\n";
+        $text .= "👥 <b>Group Chat ID:</b> <code>{$finalChatId}</code>\n";
+        $text .= "📱 <b>Authorized Primary Device:</b> <b>{$primaryDeviceName}</b>\n";
+        $text .= "🆔 <b>Primary Device ID:</b> <code>{$primaryDeviceId}</code>\n";
+        $text .= "🔒 <b>Privacy Rule:</b> <b>Settings tab will ONLY show on this primary device.</b>\n";
+        $text .= "🚨 <b>Instant Alert:</b> Any login from another device or unrecognized IP will be alerted here immediately.\n";
+        $text .= '🕒 <b>Timestamp:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= '🛡️ <i>Dyzzstore Security Manager</i>';
+
+        $res = self::sendMessage($text, $finalChatId, $finalToken);
+        if ($res['success']) {
+            $res['message'] = "Test alert sent to Telegram Group ({$finalChatId}) successfully!";
+            $res['target_chat_id'] = $finalChatId;
+        }
+
+        return $res;
     }
 }

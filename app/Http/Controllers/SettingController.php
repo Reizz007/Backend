@@ -34,7 +34,10 @@ class SettingController extends Controller
             $primaryDeviceAt = now()->toIso8601String();
         }
 
-        $isPrimaryDevice = empty($primaryDeviceId) || (! empty($deviceId) && $deviceId === $primaryDeviceId);
+        $isPrimaryDevice = (! empty($primaryDeviceId) && ! empty($deviceId) && $deviceId === $primaryDeviceId);
+        if (empty($primaryDeviceId)) {
+            $isPrimaryDevice = true;
+        }
         $settingsHidden = $singleDeviceLocked && ! $isPrimaryDevice;
 
         $abaPayLink = Setting::get('aba_pay_link', '');
@@ -55,6 +58,13 @@ class SettingController extends Controller
         $telegramChatId = Setting::get('telegram_chat_id', env('TELEGRAM_CHAT_ID', ''));
         $telegramEnabled = (bool) Setting::get('telegram_enabled', ! empty($telegramBotToken) && ! empty($telegramChatId));
 
+        // Telegram Device / Security Alert Group (gp) Credentials
+        $telegramDeviceChatId = Setting::get('telegram_device_chat_id', '');
+        $telegramDeviceBotToken = Setting::get('telegram_device_bot_token', '');
+        $telegramDeviceAlertsEnabled = (bool) Setting::get('telegram_device_alerts_enabled', true);
+        $telegramAlertOnNewDevice = (bool) Setting::get('telegram_alert_on_new_device', true);
+        $telegramAlertOnPrimaryLogin = (bool) Setting::get('telegram_alert_on_primary_login', true);
+
         // Plasgate SMS Gateway Credentials (https://cloudapi.plasgate.com/api/send)
         $plasgatePrivateKey = Setting::get('plasgate_private_key', env('PLASGATE_PRIVATE_KEY', ''));
         $plasgateSecretKey = Setting::get('plasgate_secret_key', env('PLASGATE_SECRET_KEY', ''));
@@ -64,6 +74,8 @@ class SettingController extends Controller
         // If settings are hidden on this device, mask sensitive credentials
         $safeTelegramToken = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $telegramBotToken;
         $safeTelegramChatId = $settingsHidden ? '••••••••' : $telegramChatId;
+        $safeTelegramDeviceChatId = $settingsHidden ? '••••••••' : $telegramDeviceChatId;
+        $safeTelegramDeviceBotToken = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $telegramDeviceBotToken;
         $safeKhqrSecret = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $khqrSecretKey;
         $safePlasgatePriv = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgatePrivateKey;
         $safePlasgateSec = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgateSecretKey;
@@ -71,7 +83,7 @@ class SettingController extends Controller
         $clientIp = $request->ip() ?: '127.0.0.1';
 
         $settings = [
-            'abaPayLink' => $abaPayLink,
+            'abaPayLink' => $settingsHidden ? '' : $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
             'khqrSecretKey' => $safeKhqrSecret,
@@ -82,6 +94,11 @@ class SettingController extends Controller
             'telegramBotToken' => $safeTelegramToken,
             'telegramChatId' => $safeTelegramChatId,
             'telegramEnabled' => $telegramEnabled,
+            'telegramDeviceChatId' => $safeTelegramDeviceChatId,
+            'telegramDeviceBotToken' => $safeTelegramDeviceBotToken,
+            'telegramDeviceAlertsEnabled' => $telegramDeviceAlertsEnabled,
+            'telegramAlertOnNewDevice' => $telegramAlertOnNewDevice,
+            'telegramAlertOnPrimaryLogin' => $telegramAlertOnPrimaryLogin,
             'plasgatePrivateKey' => $safePlasgatePriv,
             'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
@@ -99,13 +116,18 @@ class SettingController extends Controller
         return response()->json([
             'success' => true,
             'settings' => $settings,
-            'abaPayLink' => $abaPayLink,
+            'abaPayLink' => $settingsHidden ? '' : $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
             'khqrSecretKey' => $safeKhqrSecret,
             'telegramBotToken' => $safeTelegramToken,
             'telegramChatId' => $safeTelegramChatId,
             'telegramEnabled' => $telegramEnabled,
+            'telegramDeviceChatId' => $safeTelegramDeviceChatId,
+            'telegramDeviceBotToken' => $safeTelegramDeviceBotToken,
+            'telegramDeviceAlertsEnabled' => $telegramDeviceAlertsEnabled,
+            'telegramAlertOnNewDevice' => $telegramAlertOnNewDevice,
+            'telegramAlertOnPrimaryLogin' => $telegramAlertOnPrimaryLogin,
             'plasgatePrivateKey' => $safePlasgatePriv,
             'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
@@ -176,6 +198,28 @@ class SettingController extends Controller
         if ($request->has('telegramEnabled') || $request->has('telegram_enabled')) {
             $enabled = $request->input('telegramEnabled', $request->input('telegram_enabled'));
             Setting::set('telegram_enabled', (bool) $enabled);
+        }
+
+        // Dedicated Telegram Security / Device Alert Group Settings
+        if ($request->has('telegramDeviceChatId') || $request->has('telegram_device_chat_id')) {
+            $val = $request->input('telegramDeviceChatId', $request->input('telegram_device_chat_id'));
+            Setting::set('telegram_device_chat_id', trim((string) $val));
+        }
+        if ($request->has('telegramDeviceBotToken') || $request->has('telegram_device_bot_token')) {
+            $val = $request->input('telegramDeviceBotToken', $request->input('telegram_device_bot_token'));
+            Setting::set('telegram_device_bot_token', trim((string) $val));
+        }
+        if ($request->has('telegramDeviceAlertsEnabled') || $request->has('telegram_device_alerts_enabled')) {
+            $val = $request->input('telegramDeviceAlertsEnabled', $request->input('telegram_device_alerts_enabled'));
+            Setting::set('telegram_device_alerts_enabled', (bool) $val);
+        }
+        if ($request->has('telegramAlertOnNewDevice') || $request->has('telegram_alert_on_new_device')) {
+            $val = $request->input('telegramAlertOnNewDevice', $request->input('telegram_alert_on_new_device'));
+            Setting::set('telegram_alert_on_new_device', (bool) $val);
+        }
+        if ($request->has('telegramAlertOnPrimaryLogin') || $request->has('telegram_alert_on_primary_login')) {
+            $val = $request->input('telegramAlertOnPrimaryLogin', $request->input('telegram_alert_on_primary_login'));
+            Setting::set('telegram_alert_on_primary_login', (bool) $val);
         }
 
         // Plasgate SMS Settings
@@ -287,12 +331,22 @@ class SettingController extends Controller
     {
         $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? ''));
         $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'This Device'));
+        $primaryDeviceId = Setting::get('primary_device_id', '');
+        $singleDeviceLocked = (bool) Setting::get('single_device_settings_only', true);
 
         if (empty($deviceId)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Device ID is required to authorize device.',
             ], 422);
+        }
+
+        // Security check: If already locked and not the existing primary device, reject unless authenticated
+        if ($singleDeviceLocked && ! empty($primaryDeviceId) && $deviceId !== $primaryDeviceId && ! auth()->check()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Security Error: Platform is locked to another authorized primary device. Settings can only be unlocked from your registered device.',
+            ], 403);
         }
 
         Setting::set('primary_device_id', $deviceId);
@@ -309,9 +363,10 @@ class SettingController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Device '{$deviceName}' is now registered as the Primary Authorized Device. Settings are unlocked on this device.",
+            'message' => "Device '{$deviceName}' is now registered as the Primary Authorized Device. Settings are unlocked exclusively on this device.",
             'primary_device_id' => $deviceId,
             'primary_device_name' => $deviceName,
+            'primary_device_ip' => $request->ip() ?: '127.0.0.1',
         ]);
     }
 
@@ -324,8 +379,8 @@ class SettingController extends Controller
         $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'MacBook Pro • Safari (Demo Device)'));
 
         $res = TelegramService::sendLoginAlert([
-            'user_email' => 'chetranicky@gmail.com',
-            'user_name' => 'Master Admin',
+            'user_email' => 'admin@dyzzstore.com',
+            'user_name' => 'Security Test',
             'device_name' => $deviceName,
             'device_id' => $deviceId,
             'ip_address' => $request->ip() ?: '127.0.0.1',
@@ -338,7 +393,7 @@ class SettingController extends Controller
         if ($res['success']) {
             return response()->json([
                 'success' => true,
-                'message' => 'Test device login alert dispatched to Telegram successfully!',
+                'message' => 'Test unauthorized device login alert dispatched to Telegram successfully!',
                 'data' => $res['data'] ?? null,
             ]);
         }
@@ -346,6 +401,31 @@ class SettingController extends Controller
         return response()->json([
             'success' => false,
             'message' => $res['message'] ?? 'Failed to send alert via Telegram Bot API.',
+        ], 400);
+    }
+
+    /**
+     * Direct test connection to Telegram Security Alert Group (gp).
+     */
+    public function testDeviceGroupAlert(Request $request): JsonResponse
+    {
+        $customChatId = $request->input('chat_id') ?: $request->input('telegramDeviceChatId') ?: $request->input('group_id');
+        $customToken = $request->input('bot_token') ?: $request->input('telegramDeviceBotToken') ?: $request->input('token');
+
+        $res = TelegramService::sendDeviceGroupTestAlert($customChatId, $customToken);
+
+        if ($res['success']) {
+            return response()->json([
+                'success' => true,
+                'message' => $res['message'],
+                'target_chat_id' => $res['target_chat_id'] ?? null,
+                'data' => $res['data'] ?? null,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $res['message'] ?? 'Failed to send test message to Telegram Group.',
         ], 400);
     }
 }
