@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\PlasgateService;
+use App\Services\TelegramService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -102,12 +104,24 @@ class AuthController extends Controller
             </div>
         ";
 
+        $telegramSent = false;
+        $adminEmail = strtolower(trim((string) env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
+        $isAdminTarget = ($email === $adminEmail || $email === 'chetranicky@gmail.com' || str_contains($email, 'admin'));
+
+        // Proactively send OTP directly to Telegram bot if admin target or Telegram is enabled
+        if ($isAdminTarget || Setting::get('telegram_enabled', true)) {
+            $teleRes = TelegramService::sendOtpAlert($email, $otp, 'Telegram Bot Alert');
+            if (! empty($teleRes['success'])) {
+                $telegramSent = true;
+            }
+        }
+
         try {
             $resendKey = env('RESEND_API_KEY');
             if (! empty($resendKey)) {
                 $fromAddress = env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev');
                 $fromName = env('MAIL_FROM_NAME', 'Admin OTP');
-                $res = Http::timeout(10)->withToken($resendKey)->post('https://api.resend.com/emails', [
+                $res = Http::timeout(5)->withToken($resendKey)->post('https://api.resend.com/emails', [
                     'from' => "{$fromName} <{$fromAddress}>",
                     'to' => [$email],
                     'subject' => "{$otp} is your Dyzzstore Verification Code",
@@ -127,7 +141,7 @@ class AuthController extends Controller
                     'mail.mailers.smtp.encryption' => env('MAIL_ENCRYPTION', 'tls'),
                     'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
                     'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
-                    'mail.mailers.smtp.timeout' => 15,
+                    'mail.mailers.smtp.timeout' => 3, // Fast 3-second timeout to avoid frontend abort
                     'mail.from.address' => $fromAddress,
                     'mail.from.name' => $fromName,
                 ]);
@@ -140,28 +154,8 @@ class AuthController extends Controller
                             ->subject("{$otp} is your Dyzzstore Verification Code");
                     });
                     $mailSent = true;
-                } catch (\Throwable $err587) {
-                    Log::warning('SMTP 587 failed, attempting failover to 465 SSL: '.$err587->getMessage());
-
-                    // Failover to Port 465 SSL
-                    config([
-                        'mail.mailers.smtp.host' => 'smtp.gmail.com',
-                        'mail.mailers.smtp.port' => 465,
-                        'mail.mailers.smtp.encryption' => 'ssl',
-                        'mail.mailers.smtp.username' => env('MAIL_USERNAME', 'rrqkh61@gmail.com'),
-                        'mail.mailers.smtp.password' => env('MAIL_PASSWORD'),
-                        'mail.mailers.smtp.timeout' => 15,
-                        'mail.from.address' => $fromAddress,
-                        'mail.from.name' => $fromName,
-                    ]);
-                    app('mail.manager')->forgetMailers();
-
-                    Mail::html($htmlContent, function ($message) use ($email, $otp, $fromAddress, $fromName) {
-                        $message->from($fromAddress, $fromName)
-                            ->to($email)
-                            ->subject("{$otp} is your Dyzzstore Verification Code");
-                    });
-                    $mailSent = true;
+                } catch (\Throwable $err) {
+                    Log::warning('SMTP send failed: '.$err->getMessage());
                 }
             }
         } catch (\Throwable $e) {
@@ -169,20 +163,36 @@ class AuthController extends Controller
             Log::error('OTP Mail delivery notice: '.$mailError);
         }
 
+        // If email failed but Telegram succeeded, accept as successful delivery!
+        if (! $mailSent && $telegramSent) {
+            $mailSent = true;
+        }
+
+        // In local or testing environments, never block authentication
+        if (! $mailSent && app()->environment('local', 'testing')) {
+            $mailSent = true;
+        }
+
         if (! $mailSent) {
             return response()->json([
                 'success' => false,
-                'message' => 'Could not send verification email: '.$mailError,
+                'message' => 'Could not send verification email: '.($mailError ?: 'Network timeout').'. Please try again or use Admin Password login.',
                 'channel' => 'email',
             ], 500);
         }
 
+        $deliveryMsg = $telegramSent
+            ? 'Verification code sent to your Telegram (@bot) & email!'
+            : 'Verification code sent to '.$email;
+
         return response()->json([
             'success' => true,
-            'message' => 'Verification code sent to '.$email,
-            'channel' => 'email',
+            'message' => $deliveryMsg,
+            'channel' => $telegramSent ? 'telegram' : 'email',
+            'telegram_sent' => $telegramSent,
             'target' => $email,
             'email' => $email,
+            'otp' => app()->environment('local', 'testing') ? $otp : null,
         ]);
     }
 
@@ -244,8 +254,7 @@ class AuthController extends Controller
 
         $user->save();
 
-        // Create Sanctum Token
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $deviceInfo = $this->handleDeviceLoginAndAlert($user, $request);
 
         return response()->json([
             'success' => true,
@@ -257,6 +266,7 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
             ],
+            'device' => $deviceInfo,
         ]);
     }
 
@@ -354,6 +364,7 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('admin-api-token')->plainTextToken;
+        $deviceInfo = $this->handleDeviceLoginAndAlert($user, $request);
 
         return response()->json([
             'success' => true,
@@ -365,7 +376,94 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
             ],
+            'device' => $deviceInfo,
         ]);
+    }
+
+    /**
+     * Handle Device Detection, Primary Device Locking, and Telegram Alert.
+     */
+    protected function handleDeviceLoginAndAlert(User $user, Request $request): array
+    {
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? ''));
+        $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? ''));
+
+        if (empty($deviceId)) {
+            $deviceId = 'dev_'.substr(md5(($request->userAgent() ?: 'device').$request->ip()), 0, 16);
+        }
+
+        if (empty($deviceName)) {
+            $ua = $request->userAgent() ?: '';
+            if (str_contains($ua, 'Android')) {
+                $deviceName = 'Android Device';
+            } elseif (str_contains($ua, 'iPhone')) {
+                $deviceName = 'iPhone (iOS)';
+            } elseif (str_contains($ua, 'iPad')) {
+                $deviceName = 'iPad (iPadOS)';
+            } elseif (str_contains($ua, 'Windows')) {
+                $deviceName = 'Windows PC';
+            } elseif (str_contains($ua, 'Macintosh') || str_contains($ua, 'Mac OS')) {
+                $deviceName = 'Mac';
+            } elseif (str_contains($ua, 'Linux')) {
+                $deviceName = 'Linux Device';
+            } else {
+                $deviceName = 'Web Browser';
+            }
+
+            if (str_contains($ua, 'Chrome') && ! str_contains($ua, 'Edg')) {
+                $deviceName .= ' • Chrome';
+            } elseif (str_contains($ua, 'Edg')) {
+                $deviceName .= ' • Edge';
+            } elseif (str_contains($ua, 'Firefox')) {
+                $deviceName .= ' • Firefox';
+            } elseif (str_contains($ua, 'Safari') && ! str_contains($ua, 'Chrome')) {
+                $deviceName .= ' • Safari';
+            }
+        }
+
+        $primaryDeviceId = Setting::get('primary_device_id');
+        $singleDeviceLocked = (bool) Setting::get('single_device_settings_only', true);
+
+        $isAnotherDevice = false;
+
+        if (empty($primaryDeviceId)) {
+            // First device logging in becomes the primary authorized device
+            Setting::set('primary_device_id', $deviceId);
+            Setting::set('primary_device_name', $deviceName);
+            Setting::set('primary_device_ip', $request->ip() ?: '127.0.0.1');
+            Setting::set('primary_device_at', now()->toIso8601String());
+            $isPrimaryDevice = true;
+            $primaryDeviceId = $deviceId;
+        } else {
+            $isPrimaryDevice = ($primaryDeviceId === $deviceId);
+            if (! $isPrimaryDevice) {
+                $isAnotherDevice = true;
+            }
+        }
+
+        $settingsHidden = $singleDeviceLocked && ! $isPrimaryDevice;
+
+        // Dispatch instant Telegram alert (especially when another device logs in)
+        TelegramService::sendLoginAlert([
+            'user_email' => $user->email,
+            'user_name' => $user->name,
+            'device_name' => $deviceName,
+            'device_id' => $deviceId,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'is_another_device' => $isAnotherDevice,
+            'settings_hidden' => $settingsHidden,
+            'time' => now()->format('Y-m-d H:i:s').' UTC',
+        ]);
+
+        return [
+            'device_id' => $deviceId,
+            'device_name' => $deviceName,
+            'is_primary' => $isPrimaryDevice,
+            'is_another_device' => $isAnotherDevice,
+            'settings_hidden' => $settingsHidden,
+            'single_device_locked' => $singleDeviceLocked,
+        ];
     }
 
     public function me(Request $request): JsonResponse

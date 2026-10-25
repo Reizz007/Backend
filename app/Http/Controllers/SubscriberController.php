@@ -46,7 +46,7 @@ class SubscriberController extends Controller
             ->orWhere('email', $id)
             ->first();
 
-        if (!$subscriber) {
+        if (! $subscriber) {
             return response()->json([
                 'success' => false,
                 'message' => 'Subscriber not found',
@@ -64,7 +64,7 @@ class SubscriberController extends Controller
     public function bulkDestroy(Request $request): JsonResponse
     {
         $ids = $request->input('ids', []);
-        if (!empty($ids) && is_array($ids)) {
+        if (! empty($ids) && is_array($ids)) {
             Subscriber::whereIn('id', $ids)->delete();
         } elseif ($request->input('all') === true) {
             Subscriber::query()->delete();

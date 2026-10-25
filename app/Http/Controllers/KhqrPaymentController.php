@@ -44,11 +44,11 @@ class KhqrPaymentController extends Controller
         $methodTitle = $isAba ? 'ABA PayWay' : 'KHQR Direct Gateway';
 
         $prefix = $isAba ? 'SYN-ABA-' : 'SYN-KHQR-';
-        $transactionId = $validated['transaction_id'] ?? ($prefix . strtoupper(Str::random(6)) . '-' . time());
-        
+        $transactionId = $validated['transaction_id'] ?? ($prefix.strtoupper(Str::random(6)).'-'.time());
+
         $defaultRemark = $isAba
-            ? ('ABA_PAY_' . substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -8))
-            : ('KHQR_' . substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -8));
+            ? ('ABA_PAY_'.substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -8))
+            : ('KHQR_'.substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -8));
         $remark = $validated['remark'] ?? $defaultRemark;
 
         // Resolve frontend success_url for automatic redirection upon payment completion
@@ -57,11 +57,11 @@ class KhqrPaymentController extends Controller
             $parsedHost = parse_url($frontendOrigin, PHP_URL_HOST);
             $parsedScheme = parse_url($frontendOrigin, PHP_URL_SCHEME) ?: 'https';
             $parsedPort = parse_url($frontendOrigin, PHP_URL_PORT);
-            $parsedOrigin = $parsedScheme . '://' . $parsedHost . ($parsedPort ? ':' . $parsedPort : '');
+            $parsedOrigin = $parsedScheme.'://'.$parsedHost.($parsedPort ? ':'.$parsedPort : '');
         } else {
             $parsedOrigin = 'https://ecommerce-2smr.onrender.com';
         }
-        $successUrl = $validated['success_url'] ?? ($parsedOrigin . '/payment-success.html?tx=' . $transactionId);
+        $successUrl = $validated['success_url'] ?? ($parsedOrigin.'/payment-success.html?tx='.$transactionId);
 
         // Generate dynamic payment via service (valid signed SHA1 for khqr.cc with success_url)
         $payment = $this->khqrService->createPayment($amount, $transactionId, $remark, $successUrl);
@@ -78,7 +78,7 @@ class KhqrPaymentController extends Controller
                 'payment_method' => $methodTitle,
                 'aba_link' => $payment['checkout_url'],
                 'status' => 'Pending Payment',
-                'api_key' => 'sk_synapse_live_' . Str::random(28),
+                'api_key' => 'sk_synapse_live_'.Str::random(28),
             ]
         );
 
@@ -116,7 +116,7 @@ class KhqrPaymentController extends Controller
     {
         $order = Order::where('order_number', $transactionId)->first();
 
-        if (!$order) {
+        if (! $order) {
             if ($request->boolean('confirm') || $request->input('confirm') === 'true' || $request->input('confirm') == '1') {
                 $order = Order::create([
                     'order_number' => $transactionId,
@@ -127,13 +127,13 @@ class KhqrPaymentController extends Controller
                     'amount' => (float) $request->input('amount', 49.00),
                     'payment_method' => 'Cambodia National KHQR Gateway',
                     'status' => 'Verified',
-                    'api_key' => 'sk_synapse_live_' . Str::random(28),
+                    'api_key' => 'sk_synapse_live_'.Str::random(28),
                 ]);
 
                 try {
                     TelegramService::sendOrderSuccessAlert($order);
                 } catch (\Throwable $e) {
-                    Log::warning('Telegram order alert exception: ' . $e->getMessage());
+                    Log::warning('Telegram order alert exception: '.$e->getMessage());
                 }
 
                 return response()->json([
@@ -158,7 +158,7 @@ class KhqrPaymentController extends Controller
             $order->save();
 
             // Send "Order Successful & Verified!" Telegram Alert
-            if (!$wasAlreadyVerified || $request->boolean('confirm') || $request->input('confirm') === 'true') {
+            if (! $wasAlreadyVerified || $request->boolean('confirm') || $request->input('confirm') === 'true') {
                 try {
                     TelegramService::sendOrderSuccessAlert($order);
                 } catch (\Throwable $e) {
@@ -167,7 +167,7 @@ class KhqrPaymentController extends Controller
             }
 
             // Auto-enroll subscriber
-            if (!empty($order->customer_email)) {
+            if (! empty($order->customer_email)) {
                 Subscriber::updateOrCreate(
                     ['email' => $order->customer_email],
                     [

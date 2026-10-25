@@ -144,4 +144,99 @@ class TelegramService
 
         return self::sendMessage($text);
     }
+
+    /**
+     * Send instant security alert to Telegram when a login occurs, especially on another device.
+     */
+    public static function sendLoginAlert(array $params): array
+    {
+        $enabled = Setting::get('telegram_enabled', true);
+        if (! $enabled) {
+            return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
+        }
+
+        $isAnotherDevice = ! empty($params['is_another_device']);
+        $email = htmlspecialchars($params['user_email'] ?? 'N/A');
+        $deviceName = htmlspecialchars($params['device_name'] ?? 'Unknown Device');
+        $deviceId = htmlspecialchars($params['device_id'] ?? 'N/A');
+        $ip = htmlspecialchars($params['ip_address'] ?? 'N/A');
+        $settingsHidden = ! empty($params['settings_hidden']);
+        $time = $params['time'] ?? now()->format('Y-m-d H:i:s').' UTC';
+
+        if ($isAnotherDevice) {
+            $text = "🚨 <b>SECURITY ALERT: Login from Another Device!</b>\n";
+            $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+            $text .= "👤 <b>Account:</b> <code>{$email}</code>\n";
+            $text .= "📱 <b>Device:</b> <b>{$deviceName}</b>\n";
+            $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
+            $text .= "🌐 <b>IP Address:</b> <code>{$ip}</code>\n";
+            if ($settingsHidden) {
+                $text .= "🔒 <b>Access Protection:</b> <b>Settings tab is HIDDEN on this device!</b>\n";
+            }
+            $text .= "🕒 <b>Time:</b> {$time}\n";
+            $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+            $text .= '🛡️ <i>Only your primary authorized device can view and modify store settings.</i>';
+        } else {
+            $text = "🔔 <b>Primary Device Login Verified</b>\n";
+            $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+            $text .= "👤 <b>Account:</b> <code>{$email}</code>\n";
+            $text .= "📱 <b>Device:</b> <b>{$deviceName}</b> (Authorized Primary Device)\n";
+            $text .= "🌐 <b>IP Address:</b> <code>{$ip}</code>\n";
+            $text .= "⚡ <b>Settings Access:</b> <b>Unlocked</b>\n";
+            $text .= "🕒 <b>Time:</b> {$time}\n";
+        }
+
+        return self::sendMessage($text);
+    }
+
+    /**
+     * Send Login OTP Verification Code to Telegram.
+     */
+    public static function sendOtpAlert(string $recipient, string $otp, string $channel = 'Email'): array
+    {
+        $enabled = Setting::get('telegram_enabled', true);
+        if (! $enabled) {
+            return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
+        }
+
+        $text = "🔐 <b>Dyzzstore Login Verification Code</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "🔑 <b>One-Time Code:</b> <code>{$otp}</code>\n";
+        $text .= '👤 <b>Recipient:</b> <code>'.htmlspecialchars($recipient)."</code>\n";
+        $text .= "📡 <b>Delivery:</b> {$channel}\n";
+        $text .= "⏱️ <b>Validity:</b> 10 Minutes\n";
+        $text .= '🕒 <b>Time:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= '🔒 <i>Do not share this verification code with anyone.</i>';
+
+        return self::sendMessage($text);
+    }
+
+    /**
+     * Send alert when Primary Device is changed or re-authorized.
+     */
+    public static function sendDeviceAuthAlert(array $params): array
+    {
+        $enabled = Setting::get('telegram_enabled', true);
+        if (! $enabled) {
+            return ['success' => false, 'message' => 'Telegram alerts disabled in settings.'];
+        }
+
+        $deviceName = htmlspecialchars($params['device_name'] ?? 'This Device');
+        $deviceId = htmlspecialchars($params['device_id'] ?? 'N/A');
+        $ip = htmlspecialchars($params['ip_address'] ?? 'N/A');
+        $time = $params['time'] ?? now()->format('Y-m-d H:i:s').' UTC';
+
+        $text = "🛡️ <b>Primary Authorized Device Updated!</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "📱 <b>New Primary Device:</b> <b>{$deviceName}</b>\n";
+        $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
+        $text .= "🌐 <b>IP Address:</b> <code>{$ip}</code>\n";
+        $text .= "🔒 <b>Security Rule:</b> <b>Settings are unlocked on this device and hidden everywhere else.</b>\n";
+        $text .= "🕒 <b>Time:</b> {$time}\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= '🚀 <i>Dyzzstore Security Manager</i>';
+
+        return self::sendMessage($text);
+    }
 }

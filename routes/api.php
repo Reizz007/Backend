@@ -72,6 +72,8 @@ Route::get('/settings', [SettingController::class, 'getSettings']);
 Route::put('/settings', [SettingController::class, 'updateSettings']);
 Route::post('/settings/test-telegram', [SettingController::class, 'testTelegram']);
 Route::post('/settings/test-plasgate', [SettingController::class, 'testPlasgate']);
+Route::post('/settings/authorize-device', [SettingController::class, 'authorizeDevice']);
+Route::post('/settings/test-device-alert', [SettingController::class, 'testDeviceAlert']);
 
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);

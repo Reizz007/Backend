@@ -10,8 +10,33 @@ use Illuminate\Http\Request;
 
 class SettingController extends Controller
 {
-    public function getSettings(): JsonResponse
+    public function getSettings(?Request $request = null): JsonResponse
     {
+        $request = $request ?? request();
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->query('device_id') ?? $request->input('device_id') ?? ''));
+        $primaryDeviceId = Setting::get('primary_device_id', '');
+        $primaryDeviceName = Setting::get('primary_device_name', 'Primary Authorized Device');
+        $primaryDeviceAt = Setting::get('primary_device_at', '');
+        $singleDeviceLocked = (bool) Setting::get('single_device_settings_only', true);
+
+        $primaryDeviceIp = Setting::get('primary_device_ip', $request->ip() ?: '127.0.0.1');
+
+        // If no primary device is registered yet and a deviceId is present, auto-claim as primary
+        if (empty($primaryDeviceId) && ! empty($deviceId)) {
+            $deviceName = $request->header('X-Device-Name', 'Primary Device');
+            Setting::set('primary_device_id', $deviceId);
+            Setting::set('primary_device_name', $deviceName);
+            Setting::set('primary_device_ip', $request->ip() ?: '127.0.0.1');
+            Setting::set('primary_device_at', now()->toIso8601String());
+            $primaryDeviceId = $deviceId;
+            $primaryDeviceName = $deviceName;
+            $primaryDeviceIp = $request->ip() ?: '127.0.0.1';
+            $primaryDeviceAt = now()->toIso8601String();
+        }
+
+        $isPrimaryDevice = empty($primaryDeviceId) || (! empty($deviceId) && $deviceId === $primaryDeviceId);
+        $settingsHidden = $singleDeviceLocked && ! $isPrimaryDevice;
+
         $abaPayLink = Setting::get('aba_pay_link', '');
         $announcementText = Setting::get('announcement_text', 'Synapse Omni-LLM 4.5 & VideoGen 4D are now live! Instant perpetual licenses & Cambodian KHQR payment.');
         $maintenanceMode = Setting::get('maintenance_mode', false);
@@ -36,22 +61,39 @@ class SettingController extends Controller
         $plasgateSenderId = Setting::get('plasgate_sender_id', env('PLASGATE_SENDER_ID', 'SMS Info'));
         $plasgateEnabled = (bool) Setting::get('plasgate_enabled', ! empty($plasgatePrivateKey) && ! empty($plasgateSecretKey));
 
+        // If settings are hidden on this device, mask sensitive credentials
+        $safeTelegramToken = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $telegramBotToken;
+        $safeTelegramChatId = $settingsHidden ? '••••••••' : $telegramChatId;
+        $safeKhqrSecret = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $khqrSecretKey;
+        $safePlasgatePriv = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgatePrivateKey;
+        $safePlasgateSec = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgateSecretKey;
+
+        $clientIp = $request->ip() ?: '127.0.0.1';
+
         $settings = [
             'abaPayLink' => $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
-            'khqrSecretKey' => $khqrSecretKey,
+            'khqrSecretKey' => $safeKhqrSecret,
             'announcementText' => $announcementText,
             'maintenanceMode' => (bool) $maintenanceMode,
             'systemStatus' => $systemStatus,
             'promoCodes' => $promoCodes,
-            'telegramBotToken' => $telegramBotToken,
-            'telegramChatId' => $telegramChatId,
+            'telegramBotToken' => $safeTelegramToken,
+            'telegramChatId' => $safeTelegramChatId,
             'telegramEnabled' => $telegramEnabled,
-            'plasgatePrivateKey' => $plasgatePrivateKey,
-            'plasgateSecretKey' => $plasgateSecretKey,
+            'plasgatePrivateKey' => $safePlasgatePriv,
+            'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
             'plasgateEnabled' => $plasgateEnabled,
+            'singleDeviceLocked' => $singleDeviceLocked,
+            'isPrimaryDevice' => $isPrimaryDevice,
+            'settingsHidden' => $settingsHidden,
+            'primaryDeviceName' => $primaryDeviceName,
+            'primaryDeviceIp' => $primaryDeviceIp,
+            'primaryDeviceAt' => $primaryDeviceAt,
+            'currentDeviceId' => $deviceId,
+            'clientIp' => $clientIp,
         ];
 
         return response()->json([
@@ -60,18 +102,43 @@ class SettingController extends Controller
             'abaPayLink' => $abaPayLink,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
-            'telegramBotToken' => $telegramBotToken,
-            'telegramChatId' => $telegramChatId,
+            'khqrSecretKey' => $safeKhqrSecret,
+            'telegramBotToken' => $safeTelegramToken,
+            'telegramChatId' => $safeTelegramChatId,
             'telegramEnabled' => $telegramEnabled,
-            'plasgatePrivateKey' => $plasgatePrivateKey,
-            'plasgateSecretKey' => $plasgateSecretKey,
+            'plasgatePrivateKey' => $safePlasgatePriv,
+            'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
             'plasgateEnabled' => $plasgateEnabled,
+            'singleDeviceLocked' => $singleDeviceLocked,
+            'isPrimaryDevice' => $isPrimaryDevice,
+            'settingsHidden' => $settingsHidden,
+            'primaryDeviceName' => $primaryDeviceName,
+            'primaryDeviceIp' => $primaryDeviceIp,
+            'primaryDeviceAt' => $primaryDeviceAt,
+            'currentDeviceId' => $deviceId,
+            'clientIp' => $clientIp,
         ]);
     }
 
     public function updateSettings(Request $request): JsonResponse
     {
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? ''));
+        $primaryDeviceId = Setting::get('primary_device_id', '');
+        $singleDeviceLocked = (bool) Setting::get('single_device_settings_only', true);
+
+        if ($singleDeviceLocked && ! empty($primaryDeviceId) && ! empty($deviceId) && $deviceId !== $primaryDeviceId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Security Error: Settings are locked. Only your primary authorized device can view and modify platform settings.',
+            ], 403);
+        }
+
+        if ($request->has('singleDeviceLocked') || $request->has('single_device_settings_only')) {
+            $locked = $request->input('singleDeviceLocked', $request->input('single_device_settings_only'));
+            Setting::set('single_device_settings_only', (bool) $locked);
+        }
+
         if ($request->has('abaPayLink')) {
             Setting::set('aba_pay_link', $request->abaPayLink);
         }
@@ -129,7 +196,7 @@ class SettingController extends Controller
             Setting::set('plasgate_enabled', (bool) $enabled);
         }
 
-        return $this->getSettings();
+        return $this->getSettings($request);
     }
 
     /**
@@ -210,6 +277,75 @@ class SettingController extends Controller
             'message' => $result['message'] ?? 'Failed to send SMS via Plasgate.',
             'normalized_phone' => $result['normalized_phone'] ?? null,
             'data' => $result['data'] ?? null,
+        ], 400);
+    }
+
+    /**
+     * Authorize this device as the Primary Authorized Device.
+     */
+    public function authorizeDevice(Request $request): JsonResponse
+    {
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? ''));
+        $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'This Device'));
+
+        if (empty($deviceId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Device ID is required to authorize device.',
+            ], 422);
+        }
+
+        Setting::set('primary_device_id', $deviceId);
+        Setting::set('primary_device_name', $deviceName);
+        Setting::set('primary_device_ip', $request->ip() ?: '127.0.0.1');
+        Setting::set('primary_device_at', now()->toIso8601String());
+
+        TelegramService::sendDeviceAuthAlert([
+            'device_name' => $deviceName,
+            'device_id' => $deviceId,
+            'ip_address' => $request->ip(),
+            'time' => now()->format('Y-m-d H:i:s').' UTC',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Device '{$deviceName}' is now registered as the Primary Authorized Device. Settings are unlocked on this device.",
+            'primary_device_id' => $deviceId,
+            'primary_device_name' => $deviceName,
+        ]);
+    }
+
+    /**
+     * Test sending new device login alert to Telegram.
+     */
+    public function testDeviceAlert(Request $request): JsonResponse
+    {
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? 'dev_demo_test_8877'));
+        $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'MacBook Pro • Safari (Demo Device)'));
+
+        $res = TelegramService::sendLoginAlert([
+            'user_email' => 'chetranicky@gmail.com',
+            'user_name' => 'Master Admin',
+            'device_name' => $deviceName,
+            'device_id' => $deviceId,
+            'ip_address' => $request->ip() ?: '127.0.0.1',
+            'user_agent' => $request->userAgent() ?: 'Demo Browser',
+            'is_another_device' => true,
+            'settings_hidden' => true,
+            'time' => now()->format('Y-m-d H:i:s').' UTC',
+        ]);
+
+        if ($res['success']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Test device login alert dispatched to Telegram successfully!',
+                'data' => $res['data'] ?? null,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $res['message'] ?? 'Failed to send alert via Telegram Bot API.',
         ], 400);
     }
 }

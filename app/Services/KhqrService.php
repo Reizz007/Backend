@@ -8,7 +8,9 @@ use Illuminate\Support\Str;
 class KhqrService
 {
     protected string $gatewayUrl;
+
     protected string $profileId;
+
     protected string $secretKey;
 
     public function __construct()
@@ -29,21 +31,21 @@ class KhqrService
     public function createPayment(float|string $amount, ?string $transactionId = null, ?string $remark = null, ?string $successUrl = null): array
     {
         if (empty($transactionId)) {
-            $transactionId = 'SYN-' . strtoupper(Str::random(10)) . '-' . time();
+            $transactionId = 'SYN-'.strtoupper(Str::random(10)).'-'.time();
         }
 
         $formattedAmount = number_format((float) $amount, 2, '.', '');
-        
+
         if (empty($remark)) {
-            $remark = 'SYNAPSE_AI_' . substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -10);
+            $remark = 'SYNAPSE_AI_'.substr(preg_replace('/[^A-Za-z0-9]/', '', $transactionId), -10);
         }
         $cleanRemark = substr($remark, 0, 50);
 
         // Security Hash generation matching khqr.cc specification
-        if (!empty($successUrl)) {
-            $rawStringToHash = $this->secretKey . $transactionId . $formattedAmount . $successUrl . $cleanRemark;
+        if (! empty($successUrl)) {
+            $rawStringToHash = $this->secretKey.$transactionId.$formattedAmount.$successUrl.$cleanRemark;
         } else {
-            $rawStringToHash = $this->secretKey . $transactionId . $formattedAmount . $cleanRemark;
+            $rawStringToHash = $this->secretKey.$transactionId.$formattedAmount.$cleanRemark;
         }
         $hash = sha1($rawStringToHash);
 
@@ -52,7 +54,7 @@ class KhqrService
         if (str_ends_with($cleanGateway, $this->profileId)) {
             $baseUrl = $cleanGateway;
         } else {
-            $baseUrl = $cleanGateway . '/' . $this->profileId;
+            $baseUrl = $cleanGateway.'/'.$this->profileId;
         }
 
         $queryParams = [
@@ -62,12 +64,12 @@ class KhqrService
             'hash' => $hash,
         ];
 
-        if (!empty($successUrl)) {
+        if (! empty($successUrl)) {
             $queryParams['success_url'] = $successUrl;
         }
 
-        $checkoutUrl = $baseUrl . '?' . http_build_query($queryParams);
-        $iframeUrl = $checkoutUrl . '&iframe=1';
+        $checkoutUrl = $baseUrl.'?'.http_build_query($queryParams);
+        $iframeUrl = $checkoutUrl.'&iframe=1';
 
         return [
             'success' => true,
@@ -93,10 +95,10 @@ class KhqrService
     {
         $formattedAmount = number_format((float) $amount, 2, '.', '');
         $cleanRemark = substr($remark, 0, 50);
-        if (!empty($successUrl)) {
-            $expectedHash = sha1($this->secretKey . $transactionId . $formattedAmount . $successUrl . $cleanRemark);
+        if (! empty($successUrl)) {
+            $expectedHash = sha1($this->secretKey.$transactionId.$formattedAmount.$successUrl.$cleanRemark);
         } else {
-            $expectedHash = sha1($this->secretKey . $transactionId . $formattedAmount . $cleanRemark);
+            $expectedHash = sha1($this->secretKey.$transactionId.$formattedAmount.$cleanRemark);
         }
 
         return hash_equals($expectedHash, $hashToVerify);

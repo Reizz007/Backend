@@ -8,5 +8,6 @@ Route::get('/{any}', function () {
     if (file_exists($indexPath)) {
         return response()->file($indexPath);
     }
+
     return view('welcome');
 })->where('any', '.*');

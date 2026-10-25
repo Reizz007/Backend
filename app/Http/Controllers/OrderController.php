@@ -34,8 +34,8 @@ class OrderController extends Controller
             'status' => 'nullable|string',
         ]);
 
-        $apiKey = 'sk_synapse_live_' . Str::random(28);
-        $orderNum = 'SYN-ORD-' . rand(1000, 9999);
+        $apiKey = 'sk_synapse_live_'.Str::random(28);
+        $orderNum = 'SYN-ORD-'.rand(1000, 9999);
 
         $order = Order::create([
             'order_number' => $orderNum,
@@ -62,7 +62,7 @@ class OrderController extends Controller
         }
 
         // Auto create/update subscriber record
-        if (!empty($order->customer_email)) {
+        if (! empty($order->customer_email)) {
             Subscriber::updateOrCreate(
                 ['email' => $order->customer_email],
                 [
@@ -91,7 +91,7 @@ class OrderController extends Controller
             ->orWhere('order_number', $idOrNumber)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'success' => false,
                 'message' => 'Order not found',
@@ -154,7 +154,7 @@ class OrderController extends Controller
             ->orWhere('order_number', $id)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'success' => false,
                 'message' => 'Order not found',
@@ -175,9 +175,9 @@ class OrderController extends Controller
     public function bulkDestroy(Request $request): JsonResponse
     {
         $ids = $request->input('ids', []);
-        if (!empty($ids) && is_array($ids)) {
+        if (! empty($ids) && is_array($ids)) {
             Order::whereIn('id', $ids)->orWhereIn('order_number', $ids)->delete();
-        } else if ($request->input('all') === true) {
+        } elseif ($request->input('all') === true) {
             Order::query()->delete();
         }
 
@@ -196,16 +196,16 @@ class OrderController extends Controller
         if ($id) {
             $order = Order::where('id', $id)->orWhere('order_number', $id)->first();
         }
-        if (!$order && $request->has('order_number')) {
+        if (! $order && $request->has('order_number')) {
             $order = Order::where('order_number', $request->input('order_number'))->first();
         }
-        if (!$order && $request->has('id')) {
+        if (! $order && $request->has('id')) {
             $order = Order::where('id', $request->input('id'))->orWhere('order_number', $request->input('id'))->first();
         }
 
-        if (!$order) {
+        if (! $order) {
             $order = Order::create([
-                'order_number' => $request->input('order_number', 'SYN-ORD-' . rand(1000, 9999)),
+                'order_number' => $request->input('order_number', 'SYN-ORD-'.rand(1000, 9999)),
                 'customer_name' => $request->input('customer_name', $request->input('customerName', 'Valued Customer')),
                 'customer_email' => $request->input('customer_email', $request->input('customerEmail', 'customer@synapse.ai')),
                 'company' => $request->input('company', ''),
@@ -213,7 +213,7 @@ class OrderController extends Controller
                 'amount' => (float) $request->input('amount', 49.00),
                 'payment_method' => $request->input('payment_method', $request->input('paymentMethod', 'Cambodia National KHQR Gateway')),
                 'status' => 'Verified',
-                'api_key' => $request->input('api_key', $request->input('apiKey', 'sk_synapse_live_' . Str::random(28))),
+                'api_key' => $request->input('api_key', $request->input('apiKey', 'sk_synapse_live_'.Str::random(28))),
             ]);
         }
 
