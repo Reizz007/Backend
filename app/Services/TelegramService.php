@@ -60,6 +60,64 @@ class TelegramService
     }
 
     /**
+     * Send a photo to Telegram via Bot API with an optional HTML caption.
+     */
+    public static function sendPhoto(string $photoData, string $caption = '', ?string $chatId = null, ?string $token = null): array
+    {
+        $botToken = $token ?: Setting::get('telegram_bot_token', env('TELEGRAM_BOT_TOKEN'));
+        $targetChatId = $chatId ?: Setting::get('telegram_chat_id', env('TELEGRAM_CHAT_ID'));
+
+        if (empty($botToken) || empty($targetChatId)) {
+            return [
+                'success' => false,
+                'message' => 'Telegram Bot Token or Chat ID is not configured.',
+            ];
+        }
+
+        try {
+            // Strip data:image/...;base64, prefix if present
+            $raw = $photoData;
+            if (str_contains($raw, ';base64,')) {
+                $raw = explode(';base64,', $raw)[1];
+            }
+
+            $binary = base64_decode($raw, true);
+            if (! $binary) {
+                // Fallback to text message if base64 decoding fails
+                return self::sendMessage($caption, $targetChatId, $botToken);
+            }
+
+            $url = "https://api.telegram.org/bot{$botToken}/sendPhoto";
+            $response = Http::timeout(15)->withoutVerifying()->attach(
+                'photo',
+                $binary,
+                'security_snapshot_'.time().'.jpg'
+            )->post($url, [
+                'chat_id' => $targetChatId,
+                'caption' => mb_substr($caption, 0, 1024),
+                'parse_mode' => 'HTML',
+            ]);
+
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Telegram security snapshot sent successfully.',
+                    'data' => $response->json(),
+                ];
+            }
+
+            // Fallback to text message if photo rejected by Telegram
+            Log::warning('Telegram sendPhoto rejected: '.$response->body().' — falling back to text');
+
+            return self::sendMessage($caption, $targetChatId, $botToken);
+        } catch (\Throwable $e) {
+            Log::error('Telegram sendPhoto exception: '.$e->getMessage().' — falling back to text');
+
+            return self::sendMessage($caption, $targetChatId, $botToken);
+        }
+    }
+
+    /**
      * Send structured alert for Order / Payment events.
      */
     public static function sendOrderAlert($order, string $event = 'New Order Received'): array
@@ -220,6 +278,13 @@ class TelegramService
             $text .= "🕒 <b>Time:</b> {$time}\n";
         }
 
+        $photo = $params['photo'] ?? ($params['snapshot'] ?? null);
+        if (! empty($photo)) {
+            $text = "📸 <b>SECURITY WEBCAM SNAPSHOT ATTACHED</b>\n".$text;
+
+            return self::sendPhoto($photo, $text, $target['chat_id'], $target['token']);
+        }
+
         return self::sendMessage($text, $target['chat_id'], $target['token']);
     }
 
@@ -273,6 +338,11 @@ class TelegramService
         $text .= "🕒 <b>Time:</b> {$time}\n";
         $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
         $text .= '🚀 <i>Dyzzstore Security Manager</i>';
+
+        $photo = $params['photo'] ?? ($params['snapshot'] ?? null);
+        if (! empty($photo)) {
+            return self::sendPhoto($photo, $text, $target['chat_id'], $target['token']);
+        }
 
         return self::sendMessage($text, $target['chat_id'], $target['token']);
     }

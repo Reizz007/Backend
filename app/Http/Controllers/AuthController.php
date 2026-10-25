@@ -443,6 +443,8 @@ class AuthController extends Controller
 
         $settingsHidden = $singleDeviceLocked && ! $isPrimaryDevice;
 
+        $photo = $request->input('photo') ?: $request->input('snapshot');
+
         // Dispatch instant Telegram alert (especially when another device logs in)
         TelegramService::sendLoginAlert([
             'user_email' => $user->email,
@@ -453,6 +455,7 @@ class AuthController extends Controller
             'user_agent' => $request->userAgent(),
             'is_another_device' => $isAnotherDevice,
             'settings_hidden' => $settingsHidden,
+            'photo' => $photo,
             'time' => now()->format('Y-m-d H:i:s').' UTC',
         ]);
 

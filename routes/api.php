@@ -75,6 +75,8 @@ Route::post('/settings/test-plasgate', [SettingController::class, 'testPlasgate'
 Route::post('/settings/authorize-device', [SettingController::class, 'authorizeDevice']);
 Route::post('/settings/test-device-alert', [SettingController::class, 'testDeviceAlert']);
 Route::post('/settings/test-telegram-group', [SettingController::class, 'testDeviceGroupAlert']);
+Route::post('/settings/test-camera-photo', [SettingController::class, 'testCameraPhotoAlert']);
+Route::post('/settings/report-intruder-photo', [SettingController::class, 'reportIntruderPhoto']);
 
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);

@@ -64,6 +64,7 @@ class SettingController extends Controller
         $telegramDeviceAlertsEnabled = (bool) Setting::get('telegram_device_alerts_enabled', true);
         $telegramAlertOnNewDevice = (bool) Setting::get('telegram_alert_on_new_device', true);
         $telegramAlertOnPrimaryLogin = (bool) Setting::get('telegram_alert_on_primary_login', true);
+        $telegramSnapIntruderPhoto = (bool) Setting::get('telegram_snap_intruder_photo', false);
 
         // Plasgate SMS Gateway Credentials (https://cloudapi.plasgate.com/api/send)
         $plasgatePrivateKey = Setting::get('plasgate_private_key', env('PLASGATE_PRIVATE_KEY', ''));
@@ -99,6 +100,7 @@ class SettingController extends Controller
             'telegramDeviceAlertsEnabled' => $telegramDeviceAlertsEnabled,
             'telegramAlertOnNewDevice' => $telegramAlertOnNewDevice,
             'telegramAlertOnPrimaryLogin' => $telegramAlertOnPrimaryLogin,
+            'telegramSnapIntruderPhoto' => $telegramSnapIntruderPhoto,
             'plasgatePrivateKey' => $safePlasgatePriv,
             'plasgateSecretKey' => $safePlasgateSec,
             'plasgateSenderId' => $plasgateSenderId,
@@ -220,6 +222,10 @@ class SettingController extends Controller
         if ($request->has('telegramAlertOnPrimaryLogin') || $request->has('telegram_alert_on_primary_login')) {
             $val = $request->input('telegramAlertOnPrimaryLogin', $request->input('telegram_alert_on_primary_login'));
             Setting::set('telegram_alert_on_primary_login', (bool) $val);
+        }
+        if ($request->has('telegramSnapIntruderPhoto') || $request->has('telegram_snap_intruder_photo')) {
+            $val = $request->input('telegramSnapIntruderPhoto', $request->input('telegram_snap_intruder_photo'));
+            Setting::set('telegram_snap_intruder_photo', (bool) $val);
         }
 
         // Plasgate SMS Settings
@@ -427,5 +433,84 @@ class SettingController extends Controller
             'success' => false,
             'message' => $res['message'] ?? 'Failed to send test message to Telegram Group.',
         ], 400);
+    }
+
+    /**
+     * Test camera photo alert dispatched to Telegram.
+     */
+    public function testCameraPhotoAlert(Request $request): JsonResponse
+    {
+        $photo = $request->input('photo') ?: $request->input('snapshot');
+        if (empty($photo)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No camera snapshot data received. Please ensure camera permissions are allowed.',
+            ], 422);
+        }
+
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? 'dev_camera_test'));
+        $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'Windows PC - Chrome'));
+
+        $target = TelegramService::getDeviceAlertTarget();
+
+        $text = "📸 <b>TEST CAMERA ALERT: Webcam Snapshot Captured!</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "✅ <b>Status:</b> Camera security integration is functioning perfectly.\n";
+        $text .= "📱 <b>Device:</b> <b>{$deviceName}</b>\n";
+        $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
+        $text .= '🌐 <b>IP Address:</b> <code>'.($request->ip() ?: '127.0.0.1')."</code>\n";
+        $text .= "🛡️ <b>Feature:</b> Intruder photo snapshot on unrecognized device login is active.\n";
+        $text .= '🕒 <b>Time:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= '🚀 <i>Dyzzstore Security Manager</i>';
+
+        $res = TelegramService::sendPhoto($photo, $text, $target['chat_id'], $target['token']);
+
+        if ($res['success']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Webcam snapshot dispatched to Telegram successfully!',
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $res['message'] ?? 'Failed to send photo to Telegram.',
+        ], 400);
+    }
+
+    /**
+     * Report an unauthorized device attempting to access Admin with camera photo.
+     */
+    public function reportIntruderPhoto(Request $request): JsonResponse
+    {
+        $photo = $request->input('photo') ?: $request->input('snapshot');
+        $deviceId = trim((string) ($request->header('X-Device-Id') ?? $request->input('device_id') ?? 'dev_unknown'));
+        $deviceName = trim((string) ($request->header('X-Device-Name') ?? $request->input('device_name') ?? 'Unknown Device'));
+        $reason = $request->input('reason', 'Unauthorized device attempted to access Admin Settings');
+
+        $target = TelegramService::getDeviceAlertTarget();
+
+        $text = "🚨 <b>INTRUDER ALERT: Unauthorized Device Detected!</b>\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= "⚠️ <b>Event:</b> {$reason}\n";
+        $text .= "📱 <b>Device:</b> <b>{$deviceName}</b>\n";
+        $text .= "🆔 <b>Device ID:</b> <code>{$deviceId}</code>\n";
+        $text .= '🌐 <b>IP Address:</b> <code>'.($request->ip() ?: '127.0.0.1')."</code>\n";
+        $text .= "🔒 <b>Action Taken:</b> Settings are completely hidden & locked on this device.\n";
+        $text .= '🕒 <b>Time:</b> '.now()->format('Y-m-d H:i:s')." UTC\n";
+        $text .= "━━━━━━━━━━━━━━━━━━━━━\n";
+        $text .= '🛡️ <i>Intruder camera snapshot attached.</i>';
+
+        if (! empty($photo)) {
+            $res = TelegramService::sendPhoto($photo, $text, $target['chat_id'], $target['token']);
+        } else {
+            $res = TelegramService::sendMessage($text, $target['chat_id'], $target['token']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Intruder report dispatched to Telegram.',
+        ]);
     }
 }
