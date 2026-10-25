@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\PlasgateService;
@@ -484,6 +485,16 @@ class AuthController extends Controller
             'photo' => $photo,
             'time' => now()->format('Y-m-d H:i:s').' UTC',
         ]);
+
+        AuditLog::record(
+            action: 'LOGIN',
+            entityType: 'Auth',
+            description: "User {$user->email} logged in from {$deviceName}".($isAnotherDevice ? ' (New/Secondary Device)' : ' (Primary Device)'),
+            entityId: $deviceId,
+            entityName: $deviceName,
+            userEmail: $user->email,
+            request: $request
+        );
 
         return [
             'device_id' => $deviceId,

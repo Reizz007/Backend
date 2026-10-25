@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Order;
 use App\Models\Subscriber;
 use App\Services\TelegramService;
@@ -122,6 +123,16 @@ class OrderController extends Controller
         $order->activated_at = now();
         $order->save();
 
+        AuditLog::record(
+            action: 'UPDATE',
+            entityType: 'Order',
+            description: "Activated order #{$order->order_number} ({$order->customer_email}) with license",
+            entityId: (string) $order->id,
+            entityName: $order->order_number,
+            changes: ['status' => $order->status, 'activation_link' => $order->activation_link],
+            request: $request
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Activation link published successfully to user!',
@@ -138,6 +149,16 @@ class OrderController extends Controller
             $order->activated_at = now();
         }
         $order->save();
+
+        AuditLog::record(
+            action: 'UPDATE',
+            entityType: 'Order',
+            description: "Updated order #{$order->order_number} status to '{$order->status}'",
+            entityId: (string) $order->id,
+            entityName: $order->order_number,
+            changes: ['status' => $order->status],
+            request: $request
+        );
 
         return response()->json([
             'success' => true,
@@ -161,7 +182,19 @@ class OrderController extends Controller
             ], 404);
         }
 
+        $orderNum = $order->order_number;
+        $orderId = (string) $order->id;
+        $orderEmail = $order->customer_email;
         $order->delete();
+
+        AuditLog::record(
+            action: 'DELETE',
+            entityType: 'Order',
+            description: "Deleted order #{$orderNum} ({$orderEmail})",
+            entityId: $orderId,
+            entityName: $orderNum,
+            request: request()
+        );
 
         return response()->json([
             'success' => true,
@@ -174,12 +207,21 @@ class OrderController extends Controller
      */
     public function bulkDestroy(Request $request): JsonResponse
     {
-        $ids = $request->input('ids', []);
+        $deletedCount = 0;
         if (! empty($ids) && is_array($ids)) {
-            Order::whereIn('id', $ids)->orWhereIn('order_number', $ids)->delete();
+            $deletedCount = Order::whereIn('id', $ids)->orWhereIn('order_number', $ids)->delete();
         } elseif ($request->input('all') === true) {
+            $deletedCount = Order::count();
             Order::query()->delete();
         }
+
+        AuditLog::record(
+            action: 'BULK_DELETE',
+            entityType: 'Order',
+            description: "Bulk deleted {$deletedCount} orders and transactions",
+            changes: ['ids' => $ids, 'all' => $request->input('all')],
+            request: $request
+        );
 
         return response()->json([
             'success' => true,

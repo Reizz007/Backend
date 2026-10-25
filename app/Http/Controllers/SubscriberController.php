@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Subscriber;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,15 @@ class SubscriberController extends Controller
 
         $sub->save();
 
+        AuditLog::record(
+            action: 'UPDATE',
+            entityType: 'Subscriber',
+            description: "Updated tokens for subscriber '{$sub->email}'",
+            entityId: (string) $sub->id,
+            entityName: $sub->email,
+            request: $request
+        );
+
         return response()->json([
             'success' => true,
             'subscriber' => $sub,
@@ -53,7 +63,18 @@ class SubscriberController extends Controller
             ], 404);
         }
 
+        $subEmail = $subscriber->email;
+        $subId = (string) $subscriber->id;
         $subscriber->delete();
+
+        AuditLog::record(
+            action: 'DELETE',
+            entityType: 'Subscriber',
+            description: "Deleted subscriber '{$subEmail}'",
+            entityId: $subId,
+            entityName: $subEmail,
+            request: request()
+        );
 
         return response()->json([
             'success' => true,
@@ -63,12 +84,21 @@ class SubscriberController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse
     {
-        $ids = $request->input('ids', []);
+        $deletedCount = 0;
         if (! empty($ids) && is_array($ids)) {
-            Subscriber::whereIn('id', $ids)->delete();
+            $deletedCount = Subscriber::whereIn('id', $ids)->delete();
         } elseif ($request->input('all') === true) {
+            $deletedCount = Subscriber::count();
             Subscriber::query()->delete();
         }
+
+        AuditLog::record(
+            action: 'BULK_DELETE',
+            entityType: 'Subscriber',
+            description: "Bulk deleted {$deletedCount} subscribers from directory",
+            changes: ['ids' => $ids, 'all' => $request->input('all')],
+            request: $request
+        );
 
         return response()->json([
             'success' => true,

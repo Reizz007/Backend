@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -70,6 +71,16 @@ class CategoryController extends Controller
 
         $category = Category::create($validated);
 
+        AuditLog::record(
+            action: 'CREATE',
+            entityType: 'Category',
+            description: "Created category '{$category->name}' (ID: {$category->id})",
+            entityId: (string) $category->id,
+            entityName: $category->name,
+            changes: $category->toArray(),
+            request: $request
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Category created successfully',
@@ -119,6 +130,16 @@ class CategoryController extends Controller
 
         $category->update($validated);
 
+        AuditLog::record(
+            action: 'UPDATE',
+            entityType: 'Category',
+            description: "Updated category '{$category->name}'",
+            entityId: (string) $category->id,
+            entityName: $category->name,
+            changes: $validated,
+            request: $request
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Category updated successfully',
@@ -141,7 +162,18 @@ class CategoryController extends Controller
             ]);
         }
 
+        $catName = $category->name;
+        $catId = (string) $category->id;
         $category->delete();
+
+        AuditLog::record(
+            action: 'DELETE',
+            entityType: 'Category',
+            description: "Deleted category '{$catName}'",
+            entityId: $catId,
+            entityName: $catName,
+            request: $request
+        );
 
         return response()->json([
             'success' => true,

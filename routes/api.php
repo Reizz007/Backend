@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\KhqrPaymentController;
@@ -81,6 +82,11 @@ Route::post('/settings/test-gmail', [SettingController::class, 'testGmail']);
 
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);
+
+// Activity & Audit Logs
+Route::get('/audit-logs', [AuditLogController::class, 'index']);
+Route::delete('/audit-logs/clear', [AuditLogController::class, 'clear']);
+Route::delete('/audit-logs/{id}', [AuditLogController::class, 'destroy']);
 
 // AI Support Chat Assistant
 Route::post('/ai-chat', [AiChatController::class, 'chat']);

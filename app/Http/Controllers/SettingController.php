@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\PlasgateService;
@@ -302,6 +303,15 @@ class SettingController extends Controller
             Setting::set('mail_from_address', trim((string) $val));
         }
 
+        AuditLog::record(
+            action: 'SETTINGS_CHANGE',
+            entityType: 'Setting',
+            description: $request->filled('adminPassword')
+                ? 'Updated platform settings & changed master admin password'
+                : 'Updated platform settings & configurations',
+            request: $request
+        );
+
         return $this->getSettings($request);
     }
 
@@ -422,6 +432,15 @@ class SettingController extends Controller
             'ip_address' => $request->ip(),
             'time' => now()->format('Y-m-d H:i:s').' UTC',
         ]);
+
+        AuditLog::record(
+            action: 'AUTHORIZE',
+            entityType: 'Device',
+            description: "Authorized device '{$deviceName}' as Primary Admin Device",
+            entityId: $deviceId,
+            entityName: $deviceName,
+            request: $request
+        );
 
         return response()->json([
             'success' => true,

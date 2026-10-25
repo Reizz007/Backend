@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
@@ -160,6 +161,16 @@ class ProductController extends Controller
 
         $product = Product::create($validated);
 
+        AuditLog::record(
+            action: 'CREATE',
+            entityType: 'Product',
+            description: "Created product '{$product->name}' (ID: {$product->id})",
+            entityId: (string) $product->id,
+            entityName: $product->name,
+            changes: $product->toArray(),
+            request: $request
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Product created successfully',
@@ -267,7 +278,19 @@ class ProductController extends Controller
             $validated['capabilities'] = array_map('trim', explode(',', $validated['capabilities']));
         }
 
+        $oldData = $product->only(['name', 'price_monthly', 'price_lifetime', 'is_active', 'status']);
         $product->update($validated);
+        $newData = $product->only(['name', 'price_monthly', 'price_lifetime', 'is_active', 'status']);
+
+        AuditLog::record(
+            action: 'UPDATE',
+            entityType: 'Product',
+            description: "Updated product '{$product->name}'",
+            entityId: (string) $product->id,
+            entityName: $product->name,
+            changes: ['before' => $oldData, 'after' => $newData],
+            request: $request
+        );
 
         return response()->json([
             'success' => true,
@@ -284,7 +307,18 @@ class ProductController extends Controller
             ->orWhere('product_id', $id)
             ->firstOrFail();
 
+        $productName = $product->name;
+        $productId = (string) $product->id;
         $product->delete();
+
+        AuditLog::record(
+            action: 'DELETE',
+            entityType: 'Product',
+            description: "Deleted product '{$productName}'",
+            entityId: $productId,
+            entityName: $productName,
+            request: request()
+        );
 
         return response()->json([
             'success' => true,
