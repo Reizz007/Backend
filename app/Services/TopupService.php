@@ -137,61 +137,28 @@ class TopupService
      */
     public function buildCheckout(TopupOrder $order): array
     {
-        $defaultMethod = Setting::get('topup_payment_method', env('PAYMENT_METHOD', 'payway'));
-        $method = strtolower($order->payment_method ?: $defaultMethod);
-
-        if (in_array($method, ['khqr', 'khqrcc', 'bakong'])) {
-            return $this->buildKhqrCheckout($order);
-        }
-
-        return $this->buildPaywayCheckout($order);
+        return $this->buildKhqrCheckout($order);
     }
 
     /**
-     * ABA PayWay checkout generator
+     * ABA PayWay checkout generator - forwards to unified dyzzstore KHQR
      */
     public function buildPaywayCheckout(TopupOrder $order): array
     {
-        $checkoutUrl = Setting::get('topup_payway_checkout_url', Setting::get('aba_pay_link', env('PAYWAY_CHECKOUT_URL', 'https://link.payway.com.kh/ABAPAY9s540501U')));
-        if (empty($checkoutUrl)) {
-            $checkoutUrl = 'https://link.payway.com.kh/ABAPAY9s540501U';
-        }
-
-        $orderNo = $order->order_no ?? ('ORD_'.now()->format('YmdHis').'_'.Str::upper(Str::random(5)));
-        $transactionId = $order->gateway_transaction_id ?: ('ORD_'.$orderNo);
-        $amount = number_format((float) ($order->amount ?? 0), 2, '.', '');
-
-        $order->loadMissing('game');
-        $gameCode = strtoupper($order->game?->code ?? 'GAME');
-        $playerId = $order->player_id ?? '';
-        $zoneId = $order->zone_id ?? '';
-
-        $remark = ! empty($zoneId)
-            ? sprintf('%s|ID:%s|S:%s', $gameCode, $playerId, $zoneId)
-            : sprintf('%s|ID:%s', $gameCode, $playerId);
-
-        $paymentData = [
-            'transaction_id' => $transactionId,
-            'amount' => $amount,
-            'remark' => substr($remark, 0, 50),
-            'hash' => sha1($transactionId.$amount.$remark),
-        ];
-
-        return [$checkoutUrl, $paymentData];
+        return $this->buildKhqrCheckout($order);
     }
 
     /**
-     * Dynamic KHQR checkout generator
+     * Dynamic KHQR checkout generator using the unified dyzzstore AnajakPay / KHQR gateway
      */
     public function buildKhqrCheckout(TopupOrder $order): array
     {
-        $gatewayUrl = Setting::get('khqr_gateway_url', config('services.khqr.gateway_url', env('KHQR_GATEWAY_URL', 'https://khqr.cc/api/payment/requestv2')));
-        $profileId = Setting::get('khqr_profile_id', config('services.khqr.profile_id', env('KHQR_PROFILE_ID', 'tW6PHjgPyzISFi3KK22hKZ57rag1cWHS')));
-        $secretKey = Setting::get('khqr_secret_key', config('services.khqr.secret_key', env('KHQR_SECRET_KEY', 'zsFq7SWHV4gYFSAdfg2ud8WV747tBOei')));
+        /** @var KhqrService $khqrService */
+        $khqrService = app(KhqrService::class);
 
         $orderNo = $order->order_no ?? ('ORD_'.now()->format('YmdHis').'_'.Str::upper(Str::random(5)));
         $transactionId = $order->gateway_transaction_id ?: ('ORD_'.$orderNo);
-        $amount = number_format((float) ($order->amount ?? 0), 2, '.', '');
+        $amount = (float) ($order->amount ?? 0);
 
         $order->loadMissing('game');
         $gameCode = strtoupper($order->game?->code ?? 'GAME');
@@ -202,22 +169,26 @@ class TopupService
             ? sprintf('%s|ID:%s|S:%s', $gameCode, $playerId, $zoneId)
             : sprintf('%s|ID:%s', $gameCode, $playerId);
 
-        $paymentData = [
-            'transaction_id' => $transactionId,
-            'amount' => $amount,
-            'remark' => substr($remark, 0, 50),
-        ];
+        $successUrl = url('/payment-success.html');
 
-        $paymentData['hash'] = sha1(
-            $secretKey
-            .$paymentData['transaction_id']
-            .$paymentData['amount']
-            .$paymentData['remark']
+        $khqrData = $khqrService->createPayment(
+            amount: $amount,
+            transactionId: $transactionId,
+            remark: $remark,
+            successUrl: $successUrl
         );
 
-        $checkoutUrl = rtrim($gatewayUrl, '/').'/'.$profileId.'?'.http_build_query($paymentData);
+        $checkoutUrl = $khqrData['checkout_url'];
+        $iframeUrl = $khqrData['iframe_url'] ?: ($checkoutUrl.'&iframe=1');
 
-        return [$checkoutUrl, $paymentData];
+        $order->update([
+            'gateway_transaction_id' => $transactionId,
+            'gateway_checkout_url' => $checkoutUrl,
+            'gateway_payload' => $khqrData,
+            'payment_method' => 'khqr',
+        ]);
+
+        return [$iframeUrl, $khqrData];
     }
 
     /**
