@@ -63,9 +63,17 @@ class TopupController extends Controller
      */
     public function checkUsername(Request $request): JsonResponse
     {
-        $gameCode = (string) ($request->input('game_code') ?? $request->input('validation_code') ?? '');
+        $gameCode = (string) ($request->input('game_code') ?? $request->input('validation_code') ?? 'mlbb');
         $playerId = (string) ($request->input('player_id') ?? $request->input('user_id') ?? '');
         $zoneId = (string) ($request->input('zone_id') ?? $request->input('server_id') ?? '');
+
+        // Automatically extract combined format: e.g. "702425515(10301)" or "702425515 (10301)"
+        if (preg_match('/^(\d+)\s*[\(\[]([^\)\]]+)[\)\]]$/', trim($playerId), $matches)) {
+            $playerId = $matches[1];
+            if (empty($zoneId)) {
+                $zoneId = $matches[2];
+            }
+        }
 
         if (empty($gameCode) || empty($playerId)) {
             return response()->json([
@@ -109,6 +117,14 @@ class TopupController extends Controller
             'zone_id' => ['nullable', 'string'],
             'payment_method' => ['nullable', 'string'],
         ]);
+
+        // Automatically extract combined format: e.g. "702425515(10301)" or "702425515 (10301)"
+        if (preg_match('/^(\d+)\s*[\(\[]([^\)\]]+)[\)\]]$/', trim($validated['player_id']), $matches)) {
+            $validated['player_id'] = $matches[1];
+            if (empty($validated['zone_id'])) {
+                $validated['zone_id'] = $matches[2];
+            }
+        }
 
         $game = TopupGame::query()
             ->where('code', strtolower(trim($validated['game_code'])))
