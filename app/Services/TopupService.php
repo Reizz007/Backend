@@ -108,10 +108,18 @@ class TopupService
                 ];
             }
 
+            $rawJson = $response->json();
+            $errorMessage = $rawJson['error']['message'] ?? $rawJson['message'] ?? 'Player ID verification rejected by supplier API.';
+
+            if (isset($rawJson['error']['code']) && $rawJson['error']['code'] === 'IP_NOT_ALLOWED') {
+                $detectedIp = $rawJson['error']['details']['ip'] ?? 'server IP';
+                $errorMessage = "FlashTopUp API: Server IP ({$detectedIp}) is not whitelisted. Please add {$detectedIp} to your FlashTopUp IP Whitelist in your reseller dashboard.";
+            }
+
             return [
                 'success' => false,
-                'message' => $response->json()['message'] ?? 'Player ID verification rejected by supplier API.',
-                'raw' => $response->json() ?? $response->body(),
+                'message' => $errorMessage,
+                'raw' => $rawJson ?? $response->body(),
             ];
         } catch (\Throwable $e) {
             Log::error('FlashTopUp Check-ID Exception: '.$e->getMessage());
@@ -367,9 +375,15 @@ class TopupService
                 'response' => $resBody,
             ]);
 
+            $failureMessage = $resBody['error']['message'] ?? $resBody['message'] ?? 'FlashTopUp rejected order request.';
+            if (isset($resBody['error']['code']) && $resBody['error']['code'] === 'IP_NOT_ALLOWED') {
+                $detectedIp = $resBody['error']['details']['ip'] ?? 'server IP';
+                $failureMessage = "Server IP {$detectedIp} not whitelisted in FlashTopUp portal.";
+            }
+
             $order->update([
                 'status' => 'manual_hold',
-                'failure_reason' => $resBody['message'] ?? 'FlashTopUp rejected order request.',
+                'failure_reason' => $failureMessage,
                 'supplier_payload' => $resBody,
             ]);
 
@@ -377,7 +391,7 @@ class TopupService
 
             return [
                 'success' => false,
-                'message' => $resBody['message'] ?? 'Supplier API returned error.',
+                'message' => $failureMessage,
                 'raw' => $resBody,
             ];
         } catch (\Throwable $ex) {
