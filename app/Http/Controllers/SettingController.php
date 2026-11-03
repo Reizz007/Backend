@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\PlasgateService;
 use App\Services\TelegramService;
+use App\Services\TopupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -79,6 +80,19 @@ class SettingController extends Controller
         // Admin Profile & Security
         $adminEmail = Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'));
 
+        // Topup & FlashTopUp Gateway Configuration
+        $topupPaymentMethod = Setting::get('topup_payment_method', env('PAYMENT_METHOD', 'payway'));
+        $topupPaywayCheckoutUrl = Setting::get('topup_payway_checkout_url', env('PAYWAY_CHECKOUT_URL', 'https://link.payway.com.kh/ABAPAY9s540501U'));
+        $topupFlashBaseUrl = Setting::get('topup_flash_base_url', env('FLASH_TOPUP_BASE_URL', 'https://flashtopup.com/api/reseller/v2'));
+        $topupFlashApiId = Setting::get('topup_flash_api_id', env('FLASH_TOPUP_API_ID', 'RSMNGJ90S66GU8IC'));
+        $topupFlashSecretKey = Setting::get('topup_flash_secret_key', env('FLASH_TOPUP_SECRET_KEY', '1c5e38d93eadd3f18ff717f3d2d3a925e3549190ce373690c5e68917aa6e9497'));
+        $topupAutoFulfill = (bool) Setting::get('topup_auto_fulfill', true);
+        $topupGameLookupEndpoint = Setting::get('topup_game_lookup_endpoint', env('GAME_LOOKUP_ENDPOINT', ''));
+        $topupGameLookupApiKey = Setting::get('topup_game_lookup_api_key', env('GAME_LOOKUP_API_KEY', ''));
+        $topupGameLookupTimeout = (int) Setting::get('topup_game_lookup_timeout', env('GAME_LOOKUP_TIMEOUT', 20));
+
+        $safeTopupFlashSecretKey = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $topupFlashSecretKey;
+
         // Gmail SMTP OTP Mailer Configuration
         $mailUsername = Setting::get('mail_username', env('MAIL_USERNAME', 'rrqkh61@gmail.com'));
         $mailPassword = Setting::get('mail_password', env('MAIL_PASSWORD', ''));
@@ -124,6 +138,15 @@ class SettingController extends Controller
             'mailPassword' => $safeMailPassword,
             'mailFromName' => $mailFromName,
             'mailFromAddress' => $mailFromAddress,
+            'topupPaymentMethod' => $topupPaymentMethod,
+            'topupPaywayCheckoutUrl' => $topupPaywayCheckoutUrl,
+            'topupFlashBaseUrl' => $topupFlashBaseUrl,
+            'topupFlashApiId' => $topupFlashApiId,
+            'topupFlashSecretKey' => $safeTopupFlashSecretKey,
+            'topupAutoFulfill' => $topupAutoFulfill,
+            'topupGameLookupEndpoint' => $topupGameLookupEndpoint,
+            'topupGameLookupApiKey' => $settingsHidden ? '••••••••' : $topupGameLookupApiKey,
+            'topupGameLookupTimeout' => $topupGameLookupTimeout,
             'singleDeviceLocked' => $singleDeviceLocked,
             'isPrimaryDevice' => $isPrimaryDevice,
             'settingsHidden' => $settingsHidden,
@@ -303,6 +326,48 @@ class SettingController extends Controller
             Setting::set('mail_from_address', trim((string) $val));
         }
 
+        // Topup Gateway & FlashTopUp API Settings
+        if ($request->has('topupPaymentMethod') || $request->has('topup_payment_method')) {
+            $val = $request->input('topupPaymentMethod', $request->input('topup_payment_method'));
+            Setting::set('topup_payment_method', strtolower(trim((string) $val)));
+        }
+        if ($request->has('topupPaywayCheckoutUrl') || $request->has('topup_payway_checkout_url')) {
+            $val = $request->input('topupPaywayCheckoutUrl', $request->input('topup_payway_checkout_url'));
+            Setting::set('topup_payway_checkout_url', trim((string) $val));
+        }
+        if ($request->has('topupFlashBaseUrl') || $request->has('topup_flash_base_url')) {
+            $val = $request->input('topupFlashBaseUrl', $request->input('topup_flash_base_url'));
+            Setting::set('topup_flash_base_url', trim((string) $val));
+        }
+        if ($request->has('topupFlashApiId') || $request->has('topup_flash_api_id')) {
+            $val = $request->input('topupFlashApiId', $request->input('topup_flash_api_id'));
+            Setting::set('topup_flash_api_id', trim((string) $val));
+        }
+        if ($request->has('topupFlashSecretKey') || $request->has('topup_flash_secret_key')) {
+            $val = $request->input('topupFlashSecretKey', $request->input('topup_flash_secret_key'));
+            if (! str_contains((string) $val, '••••')) {
+                Setting::set('topup_flash_secret_key', trim((string) $val));
+            }
+        }
+        if ($request->has('topupAutoFulfill') || $request->has('topup_auto_fulfill')) {
+            $val = $request->input('topupAutoFulfill', $request->input('topup_auto_fulfill'));
+            Setting::set('topup_auto_fulfill', (bool) $val);
+        }
+        if ($request->has('topupGameLookupEndpoint') || $request->has('topup_game_lookup_endpoint')) {
+            $val = $request->input('topupGameLookupEndpoint', $request->input('topup_game_lookup_endpoint'));
+            Setting::set('topup_game_lookup_endpoint', trim((string) $val));
+        }
+        if ($request->has('topupGameLookupApiKey') || $request->has('topup_game_lookup_api_key')) {
+            $val = $request->input('topupGameLookupApiKey', $request->input('topup_game_lookup_api_key'));
+            if (! str_contains((string) $val, '••••')) {
+                Setting::set('topup_game_lookup_api_key', trim((string) $val));
+            }
+        }
+        if ($request->has('topupGameLookupTimeout') || $request->has('topup_game_lookup_timeout')) {
+            $val = (int) $request->input('topupGameLookupTimeout', $request->input('topup_game_lookup_timeout'));
+            Setting::set('topup_game_lookup_timeout', $val > 0 ? $val : 20);
+        }
+
         AuditLog::record(
             action: 'SETTINGS_CHANGE',
             entityType: 'Setting',
@@ -313,6 +378,21 @@ class SettingController extends Controller
         );
 
         return $this->getSettings($request);
+    }
+
+    /**
+     * Test connection to FlashTopUp API
+     */
+    public function testFlashTopUp(Request $request): JsonResponse
+    {
+        $topupService = app(TopupService::class);
+        $result = $topupService->checkPlayerUsername('mlbb', '12345678', '1234');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'FlashTopUp connection check performed.',
+            'result' => $result,
+        ]);
     }
 
     /**

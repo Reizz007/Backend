@@ -70,4 +70,16 @@ class AuditLog extends Model
             'changes' => $changes,
         ]);
     }
+
+    /**
+     * Backward-compatible shorthand helper
+     */
+    public static function log(string $action, string $description, string $entityType = 'Topup'): self
+    {
+        return self::record(
+            action: $action,
+            entityType: $entityType,
+            description: $description
+        );
+    }
 }

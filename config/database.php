@@ -60,8 +60,9 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+                Mysql::ATTR_SSL_CA => file_exists(base_path('ca.pem')) ? base_path('ca.pem') : env('MYSQL_ATTR_SSL_CA'),
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
+            ], fn ($value) => $value !== null && $value !== '') : [],
         ],
 
         'mariadb' => [
@@ -80,8 +81,9 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+                Mysql::ATTR_SSL_CA => file_exists(base_path('ca.pem')) ? base_path('ca.pem') : env('MYSQL_ATTR_SSL_CA'),
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
+            ], fn ($value) => $value !== null && $value !== '') : [],
         ],
 
         'pgsql' => [

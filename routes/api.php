@@ -10,6 +10,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\SubscriberController;
+use App\Http\Controllers\TopupController;
 use Illuminate\Support\Facades\Route;
 
 // Health & System Status
@@ -79,6 +80,46 @@ Route::post('/settings/test-telegram-group', [SettingController::class, 'testDev
 Route::post('/settings/test-camera-photo', [SettingController::class, 'testCameraPhotoAlert']);
 Route::post('/settings/report-intruder-photo', [SettingController::class, 'reportIntruderPhoto']);
 Route::post('/settings/test-gmail', [SettingController::class, 'testGmail']);
+Route::post('/settings/test-flash-topup', [SettingController::class, 'testFlashTopUp']);
+
+// Top-up Game Store (Public API)
+Route::prefix('topup')->group(function () {
+    Route::get('/games', [TopupController::class, 'catalog']);
+    Route::get('/games/{idOrCode}', [TopupController::class, 'showGame']);
+    Route::match(['GET', 'POST'], '/check-username', [TopupController::class, 'checkUsername']);
+    Route::match(['GET', 'POST'], '/check-id', [TopupController::class, 'checkUsername']);
+    Route::post('/orders', [TopupController::class, 'createOrder']);
+    Route::get('/orders/{idOrOrderNo}', [TopupController::class, 'showOrder']);
+    Route::post('/payway/webhook', [TopupController::class, 'khqrWebhook']);
+    Route::post('/khqr/webhook', [TopupController::class, 'khqrWebhook']);
+    Route::post('/flashtopup/webhook', [TopupController::class, 'khqrWebhook']);
+});
+
+// Top-up Backwards-Compatible Public Aliases
+Route::get('/games', [TopupController::class, 'catalog']);
+Route::get('/games/{idOrCode}', [TopupController::class, 'showGame']);
+Route::match(['GET', 'POST'], '/check-username', [TopupController::class, 'checkUsername']);
+Route::match(['GET', 'POST'], '/check-id', [TopupController::class, 'checkUsername']);
+Route::post('/payway/webhook', [TopupController::class, 'khqrWebhook']);
+Route::post('/khqr/webhook', [TopupController::class, 'khqrWebhook']);
+Route::post('/flashtopup/webhook', [TopupController::class, 'khqrWebhook']);
+
+// Top-up Admin Management Routes
+Route::prefix('admin/topup')->group(function () {
+    Route::get('/dashboard', [TopupController::class, 'adminDashboard']);
+    Route::get('/orders', [TopupController::class, 'adminOrders']);
+    Route::patch('/orders/{id}', [TopupController::class, 'updateOrderStatus']);
+    Route::post('/orders/{id}/manual-verify', [TopupController::class, 'manualVerifyOrder']);
+    Route::delete('/orders/{id}', [TopupController::class, 'destroyOrder']);
+
+    Route::post('/games', [TopupController::class, 'storeGame']);
+    Route::patch('/games/{id}', [TopupController::class, 'updateGame']);
+    Route::delete('/games/{id}', [TopupController::class, 'destroyGame']);
+
+    Route::post('/packages', [TopupController::class, 'storePackage']);
+    Route::patch('/packages/{id}', [TopupController::class, 'updatePackage']);
+    Route::delete('/packages/{id}', [TopupController::class, 'destroyPackage']);
+});
 
 // Dashboard Stats
 Route::get('/stats', [StatsController::class, 'index']);
