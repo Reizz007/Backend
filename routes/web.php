@@ -3,6 +3,34 @@
 use App\Models\Setting;
 use Illuminate\Support\Facades\Route;
 
+// Serve sitemap.xml directly with XML headers for Googlebot
+Route::get('/sitemap.xml', function () {
+    $path = public_path('sitemap.xml');
+    if (file_exists($path)) {
+        return response()->file($path, [
+            'Content-Type' => 'application/xml; charset=utf-8',
+        ]);
+    }
+
+    return response('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://dyzzstore.store/</loc></url></urlset>', 200, [
+        'Content-Type' => 'application/xml; charset=utf-8',
+    ]);
+});
+
+// Serve robots.txt directly
+Route::get('/robots.txt', function () {
+    $path = public_path('robots.txt');
+    if (file_exists($path)) {
+        return response()->file($path, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+        ]);
+    }
+
+    return response("User-agent: *\nAllow: /\nSitemap: https://dyzzstore.store/sitemap.xml\n", 200, [
+        'Content-Type' => 'text/plain; charset=utf-8',
+    ]);
+});
+
 // Serve React SPA Frontend if built into public/
 Route::get('/{any}', function () {
     $indexPath = public_path('index.html');
