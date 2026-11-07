@@ -109,10 +109,38 @@ class SettingController extends Controller
         $safePlasgatePriv = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgatePrivateKey;
         $safePlasgateSec = $settingsHidden ? '••••••••••••••••••••••••••••••••' : $plasgateSecretKey;
 
+        // SEO & Search Keywords Settings
+        $seoTitle = Setting::get('seo_title', 'Dyzzstore | Premier AI Tools Marketplace & Game Top-Up');
+        $seoDescription = Setting::get('seo_description', 'Discover, buy, and top-up MLBB diamonds, Magic Chess, Free Fire, and premier AI software tools. Instant delivery via Cambodia National KHQR or Card.');
+        $seoKeywords = Setting::get('seo_keywords', 'Dyzzstore, MLBB topup, Diamond Mobile Legends, Magic Chess, Free Fire topup, AI tools, Midjourney, ChatGPT, perpetual license, KHQR Bakong payment, cheap game topup Cambodia');
+        $googleVerification = Setting::get('google_verification', 'RhwAQDXFLfwzFSBq0YM1kouGUUJ228ZjagAQ3Zr6K_I');
+        $seoRobots = Setting::get('seo_robots', 'index, follow');
+
+        // Social Media Settings
+        $socialFacebook = Setting::get('social_facebook', 'https://www.facebook.com/softpointautoid');
+        $socialInstagram = Setting::get('social_instagram', 'https://www.instagram.com/softpoint_autoid/');
+        $socialTwitter = Setting::get('social_twitter', 'https://x.com/yourhandle');
+        $socialLinkedin = Setting::get('social_linkedin', 'https://linkedin.com/company/yourcompany');
+        $socialTelegram = Setting::get('social_telegram', 'https://t.me/dyzzstore_bot');
+        $socialWhatsapp = Setting::get('social_whatsapp', 'https://wa.me/qr/MZQQIASMQZQGK1');
+        $socialTiktok = Setting::get('social_tiktok', 'https://www.tiktok.com/@softpointautoid');
+
         $clientIp = $request->ip() ?: '127.0.0.1';
 
         $settings = [
             'abaPayLink' => $settingsHidden ? '' : $abaPayLink,
+            'seoTitle' => $seoTitle,
+            'seoDescription' => $seoDescription,
+            'seoKeywords' => $seoKeywords,
+            'googleVerification' => $googleVerification,
+            'seoRobots' => $seoRobots,
+            'socialFacebook' => $socialFacebook,
+            'socialInstagram' => $socialInstagram,
+            'socialTwitter' => $socialTwitter,
+            'socialLinkedin' => $socialLinkedin,
+            'socialTelegram' => $socialTelegram,
+            'socialWhatsapp' => $socialWhatsapp,
+            'socialTiktok' => $socialTiktok,
             'khqrGatewayUrl' => $khqrGatewayUrl,
             'khqrProfileId' => $khqrProfileId,
             'khqrSecretKey' => $safeKhqrSecret,
@@ -366,6 +394,46 @@ class SettingController extends Controller
         if ($request->has('topupGameLookupTimeout') || $request->has('topup_game_lookup_timeout')) {
             $val = (int) $request->input('topupGameLookupTimeout', $request->input('topup_game_lookup_timeout'));
             Setting::set('topup_game_lookup_timeout', $val > 0 ? $val : 20);
+        }
+
+        // SEO & Search Keywords Settings
+        if ($request->has('seoTitle') || $request->has('seo_title')) {
+            Setting::set('seo_title', trim((string) $request->input('seoTitle', $request->input('seo_title'))));
+        }
+        if ($request->has('seoDescription') || $request->has('seo_description')) {
+            Setting::set('seo_description', trim((string) $request->input('seoDescription', $request->input('seo_description'))));
+        }
+        if ($request->has('seoKeywords') || $request->has('seo_keywords')) {
+            Setting::set('seo_keywords', trim((string) $request->input('seoKeywords', $request->input('seo_keywords'))));
+        }
+        if ($request->has('googleVerification') || $request->has('google_verification')) {
+            Setting::set('google_verification', trim((string) $request->input('googleVerification', $request->input('google_verification'))));
+        }
+        if ($request->has('seoRobots') || $request->has('seo_robots')) {
+            Setting::set('seo_robots', trim((string) $request->input('seoRobots', $request->input('seo_robots'))));
+        }
+
+        // Social Media Settings (Exact match to Admin screenshot)
+        if ($request->has('socialFacebook') || $request->has('social_facebook')) {
+            Setting::set('social_facebook', trim((string) $request->input('socialFacebook', $request->input('social_facebook'))));
+        }
+        if ($request->has('socialInstagram') || $request->has('social_instagram')) {
+            Setting::set('social_instagram', trim((string) $request->input('socialInstagram', $request->input('social_instagram'))));
+        }
+        if ($request->has('socialTwitter') || $request->has('social_twitter')) {
+            Setting::set('social_twitter', trim((string) $request->input('socialTwitter', $request->input('social_twitter'))));
+        }
+        if ($request->has('socialLinkedin') || $request->has('social_linkedin')) {
+            Setting::set('social_linkedin', trim((string) $request->input('socialLinkedin', $request->input('social_linkedin'))));
+        }
+        if ($request->has('socialTelegram') || $request->has('social_telegram')) {
+            Setting::set('social_telegram', trim((string) $request->input('socialTelegram', $request->input('social_telegram'))));
+        }
+        if ($request->has('socialWhatsapp') || $request->has('social_whatsapp')) {
+            Setting::set('social_whatsapp', trim((string) $request->input('socialWhatsapp', $request->input('social_whatsapp'))));
+        }
+        if ($request->has('socialTiktok') || $request->has('social_tiktok')) {
+            Setting::set('social_tiktok', trim((string) $request->input('socialTiktok', $request->input('social_tiktok'))));
         }
 
         AuditLog::record(
