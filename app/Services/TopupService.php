@@ -157,7 +157,7 @@ class TopupService
         $khqrService = app(KhqrService::class);
 
         $orderNo = $order->order_no ?? ('ORD_'.now()->format('YmdHis').'_'.Str::upper(Str::random(5)));
-        $transactionId = $order->gateway_transaction_id ?: ('ORD_'.$orderNo);
+        $transactionId = $order->gateway_transaction_id ?: (str_starts_with($orderNo, 'ORD_') ? $orderNo : 'ORD_'.$orderNo);
         $amount = (float) ($order->amount ?? 0);
 
         $order->loadMissing('game');
@@ -192,6 +192,53 @@ class TopupService
     }
 
     /**
+     * Reusable helper to make HMAC-SHA256 signed requests to FlashTopUp API
+     */
+    public function callFlashApi(string $method, string $path, ?array $body = null): array
+    {
+        $config = $this->getFlashConfig();
+        $apiId = $config['api_id'];
+        $secretKey = $config['secret_key'];
+        $baseUrl = $config['base_url'];
+
+        $timestamp = (string) time();
+        $nonce = bin2hex(random_bytes(16));
+        $rawJson = ($body !== null && strtoupper($method) === 'POST')
+            ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : '';
+        $bodyHash = hash('sha256', $rawJson);
+        $canonical = implode("\n", [strtoupper($method), $path, $timestamp, $nonce, $bodyHash]);
+        $signature = hash_hmac('sha256', $canonical, $secretKey);
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'X-FT-API-ID' => $apiId,
+            'X-FT-Timestamp' => $timestamp,
+            'X-FT-Nonce' => $nonce,
+            'X-FT-Signature' => $signature,
+        ];
+
+        try {
+            $req = Http::withHeaders($headers)->withoutVerifying()->timeout(25);
+            $response = strtoupper($method) === 'POST'
+                ? $req->withBody($rawJson, 'application/json')->post($baseUrl.$path)
+                : $req->get($baseUrl.$path);
+
+            return [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+                'body' => $response->json() ?? $response->body(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'status' => 500,
+                'successful' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Auto Push / Fulfill Diamond Order to FlashTopUp API
      */
     public function fulfillOrder(TopupOrder $order): array
@@ -202,66 +249,117 @@ class TopupService
         $packageName = strtolower($order->package?->name ?? '');
         $gameCode = strtolower($order->game?->code ?? '');
 
-        // Smart FlashTopUp Product ID & Service Code Resolver
-        $mlbbServiceCodes = [
-            '38' => 'MOBILE_LEGENDS_55_DIAMONDS',
-            '55' => 'MOBILE_LEGENDS_55_DIAMONDS',
-            '86' => 'MOBILE_LEGENDS_86_DIAMONDS',
-            '89' => 'MOBILE_LEGENDS_86_DIAMONDS',
-            '142' => 'MOBILE_LEGENDS_WEEKLY',
-            '165' => 'MOBILE_LEGENDS_165_DIAMONDS',
-            '172' => 'MOBILE_LEGENDS_172_DIAMONDS',
-            '257' => 'MOBILE_LEGENDS_257_DIAMONDS',
-            '275' => 'MOBILE_LEGENDS_275_DIAMONDS',
-            '343' => 'MOBILE_LEGENDS_343_DIAMONDS',
-            '344' => 'MOBILE_LEGENDS_344_DIAMONDS',
-            '429' => 'MOBILE_LEGENDS_429_DIAMONDS',
-            '430' => 'MOBILE_LEGENDS_430_DIAMONDS',
-            '514' => 'MOBILE_LEGENDS_514_DIAMONDS',
-            '516' => 'MOBILE_LEGENDS_516_DIAMONDS',
-            '565' => 'MOBILE_LEGENDS_565_DIAMONDS',
-            '600' => 'MOBILE_LEGENDS_600_DIAMONDS',
-            '602' => 'MOBILE_LEGENDS_602_DIAMONDS',
-            '706' => 'MOBILE_LEGENDS_706_DIAMONDS',
-            '792' => 'MOBILE_LEGENDS_792_DIAMONDS',
-        ];
+        $productId = 3;
+        $serviceId = null;
+        $serviceCode = null;
 
-        if (str_starts_with($skuValue, 'MOBILE_LEGENDS_') || str_starts_with($skuValue, 'TOPUP_')) {
+        // 1. Direct SKU overrides if already a full service string
+        if (str_starts_with($skuValue, 'TOPUP_') || str_starts_with($skuValue, 'MOBILE_LEGENDS_')) {
             $serviceCode = $skuValue;
             $productId = $order->game?->api_game_id ?: 3;
-        } elseif (isset($mlbbServiceCodes[$skuValue])) {
-            $serviceCode = $mlbbServiceCodes[$skuValue];
-            $productId = 3;
-        } elseif (str_contains($packageName, 'weekly elite')) {
-            $serviceCode = 'MOBILE_LEGENDS_WEEKLY_ELITE_PACK';
-            $productId = 3;
-        } elseif (str_contains($packageName, 'monthly elite')) {
-            $serviceCode = 'MOBILE_LEGENDS_MONTHLY_ELITE_PACK';
-            $productId = 3;
-        } elseif (str_contains($packageName, 'weekly') || str_contains($packageName, 'pass')) {
-            $serviceCode = 'MOBILE_LEGENDS_WEEKLY';
-            $productId = 3;
-        } elseif (str_contains($packageName, 'twilight')) {
-            $serviceCode = 'MOBILE_LEGENDS_TWILIGHT';
-            $productId = 3;
-        } elseif (isset($mlbbServiceCodes[(string) $diamondAmount])) {
-            $serviceCode = $mlbbServiceCodes[(string) $diamondAmount];
-            $productId = 3;
-        } elseif ((int) $skuValue >= 267 && (int) $skuValue <= 350) {
+        } elseif (str_contains($skuValue, '|')) {
+            $parts = explode('|', $skuValue);
+            $productId = (int) trim($parts[0]);
+            $serviceCode = trim($parts[1]);
+        }
+        // 2. Mobile Legends Exclusive / Small Denominations (Product 5: 5, 11, 22, 33 Diamonds)
+        elseif ($diamondAmount === 5 || $skuValue === '267') {
             $productId = 5;
-            $diamondsMap = [
-                '267' => '5_DIAMONDS',
-                '268' => '11_DIAMONDS',
-                '269' => '22_DIAMONDS',
-                '270' => '33_DIAMONDS',
-                '271' => '55_DIAMONDS',
-                '272' => '56_DIAMONDS',
-                '273' => '112_DIAMONDS',
-            ];
-            $diamondStr = $diamondsMap[$skuValue] ?? '55_DIAMONDS';
-            $serviceCode = "TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_{$diamondStr}_{$skuValue}";
-        } elseif ((int) $skuValue >= 2134 && (int) $skuValue <= 2150) {
+            $serviceId = 267;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_5_DIAMONDS_267';
+        } elseif ($diamondAmount === 11 || $skuValue === '139' || $skuValue === '268') {
+            $productId = 5;
+            $serviceId = 268;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_11_DIAMONDS_268';
+        } elseif ($diamondAmount === 22) {
+            $productId = 5;
+            $serviceId = 268;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_22_DIAMONDS_268';
+        } elseif ($diamondAmount === 33 || $skuValue === '269') {
+            $productId = 5;
+            $serviceId = 269;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_33_DIAMONDS_269';
+        } elseif ($skuValue === '270') {
+            $productId = 5;
+            $serviceId = 270;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_55_DIAMONDS_270';
+        } elseif ($skuValue === '271' || $skuValue === '272') {
+            $productId = 5;
+            $serviceId = (int) $skuValue;
+            $serviceCode = "TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_56_DIAMONDS_{$skuValue}";
+        } elseif ($diamondAmount === 112 || $skuValue === '273') {
+            $productId = 5;
+            $serviceId = 273;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_112_DIAMONDS_273';
+        } elseif ($diamondAmount === 165 && $skuValue === '274') {
+            $productId = 5;
+            $serviceId = 274;
+            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_165_DIAMONDS_274';
+        }
+        // 3. Mobile Legends Regular Moonton Denominations (Product 3)
+        elseif (str_contains($packageName, 'weekly elite') || $skuValue === '140') {
+            $productId = 3;
+            $serviceId = 140;
+            $serviceCode = 'MOBILE_LEGENDS_WEEKLY_ELITE_PACK';
+        } elseif (str_contains($packageName, 'monthly elite')) {
+            $productId = 3;
+            $serviceCode = 'MOBILE_LEGENDS_MONTHLY_ELITE_PACK';
+        } elseif (str_contains($packageName, 'weekly') || str_contains($packageName, 'pass') || $skuValue === '142') {
+            $productId = 3;
+            $serviceId = 142;
+            $serviceCode = 'MOBILE_LEGENDS_WEEKLY';
+        } elseif (str_contains($packageName, 'twilight')) {
+            $productId = 3;
+            $serviceCode = 'MOBILE_LEGENDS_TWILIGHT';
+        } elseif ($diamondAmount === 55 || $skuValue === '38' || $skuValue === '55') {
+            $productId = 3;
+            $serviceId = 38;
+            $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
+        } elseif ($diamondAmount === 86 || $skuValue === '86' || $skuValue === '89') {
+            $productId = 3;
+            $serviceId = 89;
+            $serviceCode = 'MOBILE_LEGENDS_86_DIAMONDS';
+        } elseif ($diamondAmount === 165 || $skuValue === '40') {
+            $productId = 3;
+            $serviceId = 40;
+            $serviceCode = 'MOBILE_LEGENDS_165_DIAMONDS';
+        } elseif ($diamondAmount === 172 || $skuValue === '41') {
+            $productId = 3;
+            $serviceId = 41;
+            $serviceCode = 'MOBILE_LEGENDS_172_DIAMONDS';
+        } elseif ($diamondAmount === 257 || $skuValue === '42') {
+            $productId = 3;
+            $serviceId = 42;
+            $serviceCode = 'MOBILE_LEGENDS_257_DIAMONDS';
+        } elseif ($diamondAmount === 275 || $skuValue === '43') {
+            $productId = 3;
+            $serviceId = 43;
+            $serviceCode = 'MOBILE_LEGENDS_275_DIAMONDS';
+        } elseif ($diamondAmount === 343 || $skuValue === '44') {
+            $productId = 3;
+            $serviceId = 44;
+            $serviceCode = 'MOBILE_LEGENDS_343_DIAMONDS';
+        } elseif ($diamondAmount === 429 || $skuValue === '429' || $skuValue === '430') {
+            $productId = 3;
+            $serviceId = 430;
+            $serviceCode = 'MOBILE_LEGENDS_429_DIAMONDS';
+        } elseif ($diamondAmount === 514 || $skuValue === '514' || $skuValue === '516') {
+            $productId = 3;
+            $serviceId = 516;
+            $serviceCode = 'MOBILE_LEGENDS_514_DIAMONDS';
+        } elseif ($diamondAmount === 706 || $skuValue === '706') {
+            $productId = 3;
+            $serviceId = 706;
+            $serviceCode = 'MOBILE_LEGENDS_706_DIAMONDS';
+        } elseif ($diamondAmount === 792 || $skuValue === '792') {
+            $productId = 3;
+            $serviceId = 792;
+            $serviceCode = 'MOBILE_LEGENDS_792_DIAMONDS';
+        }
+        // 4. Magic Chess Gogo (Product 107)
+        elseif ((int) $skuValue >= 2134 && (int) $skuValue <= 2150) {
             $productId = 107;
+            $serviceId = (int) $skuValue;
             $mcMap = [
                 '2134' => '5_DIAMONDS',
                 '2135' => '11_DIAMONDS',
@@ -273,111 +371,86 @@ class TopupService
             ];
             $mcStr = $mcMap[$skuValue] ?? '55_DIAMONDS';
             $serviceCode = "TOPUP_MAGIC_CHESS_GOGO_107_{$mcStr}_{$skuValue}";
-        } elseif (str_contains($skuValue, '|')) {
-            $parts = explode('|', $skuValue);
-            $productId = (int) trim($parts[0]);
-            $serviceCode = trim($parts[1]);
-        } elseif (! empty($skuValue)) {
-            $serviceCode = $skuValue;
-            $productId = $order->game?->api_game_id ?: 3;
-        } else {
-            $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
-            $productId = 3;
         }
-
-        $config = $this->getFlashConfig();
-        $apiId = $config['api_id'];
-        $secretKey = $config['secret_key'];
-        $baseUrl = $config['base_url'];
-
-        $path = '/api/reseller/v2/order';
-        $timestamp = (string) time();
-        $nonce = bin2hex(random_bytes(16));
+        // 5. Fallback defaults
+        elseif (! empty($skuValue) && is_numeric($skuValue)) {
+            $productId = $order->game?->api_game_id ?: 3;
+            $serviceId = (int) $skuValue;
+        } else {
+            $productId = $order->game?->api_game_id ?: 3;
+            $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
+            $serviceId = 38;
+        }
 
         $orderBody = [
             'product_id' => (int) $productId,
             'quantity' => 1,
             'reference_id' => (string) $order->order_no,
             'server_id' => (string) trim($order->zone_id ?? ''),
-            'service_code' => (string) trim($serviceCode),
             'user_id' => (string) trim($order->player_id),
         ];
 
-        ksort($orderBody);
-        $orderJson = json_encode($orderBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        $orderBodyHash = hash('sha256', $orderJson);
-        $orderCanonical = implode("\n", ['POST', $path, $timestamp, $nonce, $orderBodyHash]);
-        $orderSignature = hash_hmac('sha256', $orderCanonical, $secretKey);
+        if (! empty($serviceCode)) {
+            $orderBody['service_code'] = (string) trim($serviceCode);
+        }
 
-        try {
-            $flashResponse = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'X-FT-API-ID' => $apiId,
-                'X-FT-Timestamp' => $timestamp,
-                'X-FT-Nonce' => $nonce,
-                'X-FT-Signature' => $orderSignature,
-            ])
-                ->withoutVerifying()
-                ->timeout(30)
-                ->withBody($orderJson, 'application/json')
-                ->post($baseUrl.$path);
+        if (! empty($serviceId) && is_numeric($serviceId)) {
+            $orderBody['service_id'] = (int) $serviceId;
+        } elseif (! empty($skuValue) && is_numeric($skuValue)) {
+            $orderBody['service_id'] = (int) $skuValue;
+        }
 
-            $resBody = $flashResponse->json() ?? [];
+        Log::info("Dispatching FlashTopUp Order for {$order->order_no}:", $orderBody);
 
-            if ($flashResponse->successful()) {
-                $order->update([
-                    'status' => 'success',
-                    'success_at' => now(),
-                    'supplier_order_id' => $resBody['data']['order_id'] ?? $resBody['order_id'] ?? null,
-                    'supplier_payload' => $resBody,
-                ]);
+        $res = $this->callFlashApi('POST', '/api/reseller/v2/order', $orderBody);
+        $resBody = is_array($res['body']) ? $res['body'] : json_decode((string) $res['body'], true) ?? [];
 
-                $this->sendTelegramAlert($order, 'success');
-
-                return [
-                    'success' => true,
-                    'message' => 'Diamond order dispatched successfully to FlashTopUp API.',
-                    'data' => $resBody,
-                ];
-            }
-
-            Log::error("FlashTopUp API Order Refused: {$order->order_no}", [
-                'status' => $flashResponse->status(),
-                'response' => $resBody,
-            ]);
-
-            $failureMessage = $resBody['error']['message'] ?? $resBody['message'] ?? 'FlashTopUp rejected order request.';
-            if (isset($resBody['error']['code']) && $resBody['error']['code'] === 'IP_NOT_ALLOWED') {
-                $detectedIp = $resBody['error']['details']['ip'] ?? 'server IP';
-                $failureMessage = "Server IP {$detectedIp} not whitelisted in FlashTopUp portal.";
-            }
-
+        if (! empty($res['successful'])) {
             $order->update([
-                'status' => 'manual_hold',
-                'failure_reason' => $failureMessage,
+                'status' => 'success',
+                'success_at' => now(),
+                'supplier_order_id' => $resBody['data']['order_id'] ?? $resBody['order_id'] ?? null,
                 'supplier_payload' => $resBody,
+                'failure_reason' => null,
             ]);
 
-            $this->sendTelegramAlert($order, 'manual_hold');
+            $this->sendTelegramAlert($order, 'success');
 
             return [
-                'success' => false,
-                'message' => $failureMessage,
-                'raw' => $resBody,
-            ];
-        } catch (\Throwable $ex) {
-            Log::critical("FlashTopUp Dispatch Exception: {$order->order_no} - ".$ex->getMessage());
-
-            $order->update([
-                'status' => 'manual_hold',
-                'failure_reason' => $ex->getMessage(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'Network error connecting to supplier: '.$ex->getMessage(),
+                'success' => true,
+                'message' => 'Diamond order dispatched successfully to FlashTopUp API.',
+                'data' => $resBody,
             ];
         }
+
+        Log::error("FlashTopUp API Order Refused: {$order->order_no}", [
+            'status' => $res['status'] ?? 0,
+            'response' => $resBody,
+            'payload' => $orderBody,
+        ]);
+
+        $failureMessage = $resBody['error']['message'] ?? $resBody['message'] ?? 'FlashTopUp rejected order request.';
+        if (! empty($resBody['error']['details'])) {
+            $failureMessage .= ' ('.(is_string($resBody['error']['details']) ? $resBody['error']['details'] : json_encode($resBody['error']['details'])).')';
+        }
+        if (isset($resBody['error']['code']) && $resBody['error']['code'] === 'IP_NOT_ALLOWED') {
+            $detectedIp = $resBody['error']['details']['ip'] ?? 'server IP';
+            $failureMessage = "Server IP {$detectedIp} not whitelisted in FlashTopUp portal.";
+        }
+
+        $order->update([
+            'status' => 'manual_hold',
+            'failure_reason' => $failureMessage,
+            'supplier_payload' => $resBody,
+        ]);
+
+        $this->sendTelegramAlert($order, 'manual_hold');
+
+        return [
+            'success' => false,
+            'message' => $failureMessage,
+            'raw' => $resBody,
+        ];
     }
 
     /**

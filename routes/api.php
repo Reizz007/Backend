@@ -117,6 +117,7 @@ Route::post('/flashtopup/webhook', [TopupController::class, 'khqrWebhook']);
 // Top-up Admin Management Routes
 Route::prefix('admin/topup')->group(function () {
     Route::get('/dashboard', [TopupController::class, 'adminDashboard']);
+    Route::get('/flash-catalog', [TopupController::class, 'flashCatalog']);
     Route::get('/orders', [TopupController::class, 'adminOrders']);
     Route::patch('/orders/{id}', [TopupController::class, 'updateOrderStatus']);
     Route::post('/orders/{id}/manual-verify', [TopupController::class, 'manualVerifyOrder']);

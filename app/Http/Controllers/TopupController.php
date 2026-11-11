@@ -257,6 +257,8 @@ class TopupController extends Controller
 
         $order = TopupOrder::where('gateway_transaction_id', $cleanKey)
             ->orWhere('order_no', $cleanKey)
+            ->orWhere('gateway_transaction_id', 'ORD_'.$cleanKey)
+            ->orWhere('order_no', str_replace('ORD_ORD_', 'ORD_', $cleanKey))
             ->first();
 
         if (! $order) {
@@ -537,6 +539,22 @@ class TopupController extends Controller
             'message' => $result['message'],
             'order' => $order->fresh(['game', 'package']),
             'result' => $result,
+        ]);
+    }
+
+    /**
+     * Inspect FlashTopUp Catalog & live balance from whitelisted server
+     */
+    public function flashCatalog(Request $request): JsonResponse
+    {
+        $productId = (int) $request->input('product_id', 3);
+        $products = $this->topupService->callFlashApi('GET', '/api/reseller/v2/products');
+        $services = $this->topupService->callFlashApi('GET', "/api/reseller/v2/services?product_id={$productId}");
+
+        return response()->json([
+            'success' => true,
+            'products' => $products,
+            'services' => $services,
         ]);
     }
 
