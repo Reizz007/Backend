@@ -268,95 +268,100 @@ class TopupService
         // 2. Mobile Legends Exclusive / Small Denominations (Product 3454: 5, 11, 22, 33 Diamonds)
         elseif ($diamondAmount === 5 || $skuValue === '267') {
             $productId = 3454;
-            $serviceId = 267;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_5_DIAMONDS_267';
+            $serviceId = 57041;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_5_DIAMONDS';
         } elseif ($diamondAmount === 11 || $skuValue === '139' || $skuValue === '268') {
             $productId = 3454;
-            $serviceId = 268;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_11_DIAMONDS_268';
+            $serviceId = 57042;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_11_DIAMONDS';
         } elseif ($diamondAmount === 22) {
             $productId = 3454;
-            $serviceId = 268;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_22_DIAMONDS_268';
+            $serviceId = 57043;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_22_DIAMONDS';
         } elseif ($diamondAmount === 33 || $skuValue === '269') {
             $productId = 3454;
-            $serviceId = 269;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_33_DIAMONDS_269';
-        } elseif ($skuValue === '270') {
+            $serviceId = 57044;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_33_DIAMONDS';
+        } elseif ($diamondAmount === 55 && ($gameCode === 'topup_mobile_legends_exclusive' || $skuValue === '270')) {
             $productId = 3454;
-            $serviceId = 270;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_55_DIAMONDS_270';
-        } elseif ($skuValue === '271' || $skuValue === '272') {
+            $serviceId = 57046;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_55_DIAMONDS';
+        } elseif ($diamondAmount === 56 || $skuValue === '271' || $skuValue === '272') {
             $productId = 3454;
-            $serviceId = (int) $skuValue;
-            $serviceCode = "TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_56_DIAMONDS_{$skuValue}";
+            $serviceId = 57045;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_56_DIAMONDS';
         } elseif ($diamondAmount === 112 || $skuValue === '273') {
             $productId = 3454;
-            $serviceId = 273;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_112_DIAMONDS_273';
-        } elseif ($diamondAmount === 165 && $skuValue === '274') {
+            $serviceId = 57048;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_112_DIAMONDS';
+        } elseif ($diamondAmount === 165 && ($gameCode === 'topup_mobile_legends_exclusive' || $skuValue === '274')) {
             $productId = 3454;
-            $serviceId = 274;
-            $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_165_DIAMONDS_274';
+            $serviceId = 57050;
+            $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_165_DIAMONDS';
         }
         // 3. Mobile Legends Regular Moonton Denominations (Product 3449)
         elseif (str_contains($packageName, 'weekly elite') || $skuValue === '140') {
             $productId = 3449;
-            $serviceId = 140;
+            $serviceId = 56904;
             $serviceCode = 'MOBILE_LEGENDS_WEEKLY_ELITE_PACK';
         } elseif (str_contains($packageName, 'monthly elite')) {
             $productId = 3449;
+            $serviceId = 56911;
             $serviceCode = 'MOBILE_LEGENDS_MONTHLY_ELITE_PACK';
         } elseif (str_contains($packageName, 'weekly') || str_contains($packageName, 'pass') || $skuValue === '142') {
             $productId = 3449;
-            $serviceId = 142;
+            $serviceId = 56906;
             $serviceCode = 'MOBILE_LEGENDS_WEEKLY';
+        } elseif (str_contains($packageName, 'diamond pass') || str_contains($packageName, 'weekly diamond')) {
+            $productId = 3449;
+            $serviceId = 64495;
+            $serviceCode = 'MOBILE_LEGENDS_DIAMOND_PASS';
         } elseif (str_contains($packageName, 'twilight')) {
             $productId = 3449;
             $serviceCode = 'MOBILE_LEGENDS_TWILIGHT';
         } elseif ($diamondAmount === 55 || $skuValue === '38' || $skuValue === '55') {
             $productId = 3449;
-            $serviceId = 38;
+            $serviceId = 56903;
             $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
         } elseif ($diamondAmount === 86 || $skuValue === '86' || $skuValue === '89') {
             $productId = 3449;
-            $serviceId = 89;
+            $serviceId = 56905;
             $serviceCode = 'MOBILE_LEGENDS_86_DIAMONDS';
         } elseif ($diamondAmount === 165 || $skuValue === '40') {
             $productId = 3449;
-            $serviceId = 40;
+            $serviceId = 56907;
             $serviceCode = 'MOBILE_LEGENDS_165_DIAMONDS';
         } elseif ($diamondAmount === 172 || $skuValue === '41') {
             $productId = 3449;
-            $serviceId = 41;
+            $serviceId = 56908;
             $serviceCode = 'MOBILE_LEGENDS_172_DIAMONDS';
         } elseif ($diamondAmount === 257 || $skuValue === '42') {
             $productId = 3449;
-            $serviceId = 42;
+            $serviceId = 56909;
             $serviceCode = 'MOBILE_LEGENDS_257_DIAMONDS';
         } elseif ($diamondAmount === 275 || $skuValue === '43') {
             $productId = 3449;
-            $serviceId = 43;
+            $serviceId = 56910;
             $serviceCode = 'MOBILE_LEGENDS_275_DIAMONDS';
         } elseif ($diamondAmount === 343 || $skuValue === '44') {
             $productId = 3449;
-            $serviceId = 44;
+            $serviceId = 56912;
             $serviceCode = 'MOBILE_LEGENDS_343_DIAMONDS';
         } elseif ($diamondAmount === 429 || $skuValue === '429' || $skuValue === '430') {
             $productId = 3449;
-            $serviceId = 430;
+            $serviceId = 56914;
             $serviceCode = 'MOBILE_LEGENDS_429_DIAMONDS';
         } elseif ($diamondAmount === 514 || $skuValue === '514' || $skuValue === '516') {
             $productId = 3449;
-            $serviceId = 516;
+            $serviceId = 56916;
             $serviceCode = 'MOBILE_LEGENDS_514_DIAMONDS';
         } elseif ($diamondAmount === 706 || $skuValue === '706') {
             $productId = 3449;
-            $serviceId = 706;
+            $serviceId = 56920;
             $serviceCode = 'MOBILE_LEGENDS_706_DIAMONDS';
         } elseif ($diamondAmount === 792 || $skuValue === '792') {
             $productId = 3449;
-            $serviceId = 792;
+            $serviceId = 56922;
             $serviceCode = 'MOBILE_LEGENDS_792_DIAMONDS';
         }
         // 4. Magic Chess Gogo (Product 107)
