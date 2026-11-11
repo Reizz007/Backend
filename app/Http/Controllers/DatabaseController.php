@@ -103,6 +103,47 @@ class DatabaseController extends Controller
     }
 
     /**
+     * Resolve CA certificate path for secure TLS/SSL MySQL connections.
+     */
+    protected function resolveCaPath(): ?string
+    {
+        $candidates = [
+            base_path('ca.pem'),
+            '/etc/ssl/certs/ca-certificates.crt',
+            '/etc/pki/tls/certs/ca-bundle.crt',
+        ];
+
+        foreach ($candidates as $cand) {
+            if (file_exists($cand)) {
+                return $cand;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build PDO options configured with SSL when using MySQL.
+     */
+    protected function getPdoOptions(string $driver): array
+    {
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 8,
+        ];
+
+        if ($driver === 'mysql' || $driver === 'mariadb') {
+            $ca = $this->resolveCaPath();
+            if ($ca) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $ca;
+            }
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        }
+
+        return $options;
+    }
+
+    /**
      * Test a proposed database connection before applying it.
      */
     public function testConnection(Request $request): JsonResponse
@@ -123,18 +164,9 @@ class DatabaseController extends Controller
 
         try {
             $start = microtime(true);
-            $options = [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_TIMEOUT => 8,
-            ];
+            $options = $this->getPdoOptions($driver);
 
-            if ($driver === 'mysql') {
-                $caPath = file_exists(base_path('ca.pem')) ? base_path('ca.pem') : null;
-                if ($caPath) {
-                    $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
-                }
-                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-
+            if ($driver === 'mysql' || $driver === 'mariadb') {
                 try {
                     $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
                     $pdo = new PDO($dsn, $username, $password, $options);
@@ -194,17 +226,9 @@ class DatabaseController extends Controller
 
         // 1. Verify connection first to guarantee zero downtime
         try {
-            $options = [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_TIMEOUT => 8,
-            ];
-            if ($driver === 'mysql') {
-                $caPath = file_exists(base_path('ca.pem')) ? base_path('ca.pem') : null;
-                if ($caPath) {
-                    $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
-                }
-                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            $options = $this->getPdoOptions($driver);
 
+            if ($driver === 'mysql' || $driver === 'mariadb') {
                 try {
                     $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
                     new PDO($dsn, $username, $password, $options);
@@ -269,6 +293,7 @@ class DatabaseController extends Controller
         @file_put_contents($envPath, $envContent);
 
         // 4. Dynamically reconfigure live application runtime
+        $runtimeOptions = $this->getPdoOptions($driver);
         config([
             'database.default' => $driver,
             "database.connections.{$driver}.host" => $host,
@@ -276,6 +301,7 @@ class DatabaseController extends Controller
             "database.connections.{$driver}.database" => $database,
             "database.connections.{$driver}.username" => $username,
             "database.connections.{$driver}.password" => $password,
+            "database.connections.{$driver}.options" => $runtimeOptions,
         ]);
         DB::purge($driver);
 
