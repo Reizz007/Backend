@@ -121,9 +121,25 @@ class DatabaseController extends Controller
             ];
 
             if ($driver === 'mysql') {
+                $caPath = file_exists(base_path('ca.pem')) ? base_path('ca.pem') : null;
+                if ($caPath) {
+                    $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
+                }
                 $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-                $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
-                $pdo = new PDO($dsn, $username, $password, $options);
+
+                try {
+                    $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
+                    $pdo = new PDO($dsn, $username, $password, $options);
+                } catch (Throwable $dbErr) {
+                    if (str_contains($dbErr->getMessage(), 'Unknown database') || str_contains($dbErr->getMessage(), '1049')) {
+                        $rootDsn = "mysql:host={$host};port={$port};charset=utf8mb4";
+                        $rootPdo = new PDO($rootDsn, $username, $password, $options);
+                        $rootPdo->exec("CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+                        $pdo = new PDO($dsn, $username, $password, $options);
+                    } else {
+                        throw $dbErr;
+                    }
+                }
             } elseif ($driver === 'pgsql') {
                 $dsn = "pgsql:host={$host};port={$port};dbname={$database}";
                 $pdo = new PDO($dsn, $username, $password, $options);
@@ -175,9 +191,25 @@ class DatabaseController extends Controller
                 PDO::ATTR_TIMEOUT => 8,
             ];
             if ($driver === 'mysql') {
+                $caPath = file_exists(base_path('ca.pem')) ? base_path('ca.pem') : null;
+                if ($caPath) {
+                    $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
+                }
                 $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-                $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
-                new PDO($dsn, $username, $password, $options);
+
+                try {
+                    $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
+                    new PDO($dsn, $username, $password, $options);
+                } catch (Throwable $dbErr) {
+                    if (str_contains($dbErr->getMessage(), 'Unknown database') || str_contains($dbErr->getMessage(), '1049')) {
+                        $rootDsn = "mysql:host={$host};port={$port};charset=utf8mb4";
+                        $rootPdo = new PDO($rootDsn, $username, $password, $options);
+                        $rootPdo->exec("CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;");
+                        new PDO($dsn, $username, $password, $options);
+                    } else {
+                        throw $dbErr;
+                    }
+                }
             } elseif ($driver === 'pgsql') {
                 $dsn = "pgsql:host={$host};port={$port};dbname={$database}";
                 new PDO($dsn, $username, $password, $options);
