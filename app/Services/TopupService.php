@@ -207,7 +207,10 @@ class TopupService
             ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
             : '';
         $bodyHash = hash('sha256', $rawJson);
-        $canonical = implode("\n", [strtoupper($method), $path, $timestamp, $nonce, $bodyHash]);
+
+        // FlashTopUp HMAC canonical path should only include the URL path without query params
+        $canonicalPath = parse_url($path, PHP_URL_PATH) ?: $path;
+        $canonical = implode("\n", [strtoupper($method), $canonicalPath, $timestamp, $nonce, $bodyHash]);
         $signature = hash_hmac('sha256', $canonical, $secretKey);
 
         $headers = [
@@ -256,103 +259,103 @@ class TopupService
         // 1. Direct SKU overrides if already a full service string
         if (str_starts_with($skuValue, 'TOPUP_') || str_starts_with($skuValue, 'MOBILE_LEGENDS_')) {
             $serviceCode = $skuValue;
-            $productId = $order->game?->api_game_id ?: 3;
+            $productId = $order->game?->api_game_id ?: 3449;
         } elseif (str_contains($skuValue, '|')) {
             $parts = explode('|', $skuValue);
             $productId = (int) trim($parts[0]);
             $serviceCode = trim($parts[1]);
         }
-        // 2. Mobile Legends Exclusive / Small Denominations (Product 5: 5, 11, 22, 33 Diamonds)
+        // 2. Mobile Legends Exclusive / Small Denominations (Product 3454: 5, 11, 22, 33 Diamonds)
         elseif ($diamondAmount === 5 || $skuValue === '267') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 267;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_5_DIAMONDS_267';
         } elseif ($diamondAmount === 11 || $skuValue === '139' || $skuValue === '268') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 268;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_11_DIAMONDS_268';
         } elseif ($diamondAmount === 22) {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 268;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_22_DIAMONDS_268';
         } elseif ($diamondAmount === 33 || $skuValue === '269') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 269;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_33_DIAMONDS_269';
         } elseif ($skuValue === '270') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 270;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_55_DIAMONDS_270';
         } elseif ($skuValue === '271' || $skuValue === '272') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = (int) $skuValue;
             $serviceCode = "TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_56_DIAMONDS_{$skuValue}";
         } elseif ($diamondAmount === 112 || $skuValue === '273') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 273;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_112_DIAMONDS_273';
         } elseif ($diamondAmount === 165 && $skuValue === '274') {
-            $productId = 5;
+            $productId = 3454;
             $serviceId = 274;
             $serviceCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE_5_165_DIAMONDS_274';
         }
-        // 3. Mobile Legends Regular Moonton Denominations (Product 3)
+        // 3. Mobile Legends Regular Moonton Denominations (Product 3449)
         elseif (str_contains($packageName, 'weekly elite') || $skuValue === '140') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 140;
             $serviceCode = 'MOBILE_LEGENDS_WEEKLY_ELITE_PACK';
         } elseif (str_contains($packageName, 'monthly elite')) {
-            $productId = 3;
+            $productId = 3449;
             $serviceCode = 'MOBILE_LEGENDS_MONTHLY_ELITE_PACK';
         } elseif (str_contains($packageName, 'weekly') || str_contains($packageName, 'pass') || $skuValue === '142') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 142;
             $serviceCode = 'MOBILE_LEGENDS_WEEKLY';
         } elseif (str_contains($packageName, 'twilight')) {
-            $productId = 3;
+            $productId = 3449;
             $serviceCode = 'MOBILE_LEGENDS_TWILIGHT';
         } elseif ($diamondAmount === 55 || $skuValue === '38' || $skuValue === '55') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 38;
             $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
         } elseif ($diamondAmount === 86 || $skuValue === '86' || $skuValue === '89') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 89;
             $serviceCode = 'MOBILE_LEGENDS_86_DIAMONDS';
         } elseif ($diamondAmount === 165 || $skuValue === '40') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 40;
             $serviceCode = 'MOBILE_LEGENDS_165_DIAMONDS';
         } elseif ($diamondAmount === 172 || $skuValue === '41') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 41;
             $serviceCode = 'MOBILE_LEGENDS_172_DIAMONDS';
         } elseif ($diamondAmount === 257 || $skuValue === '42') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 42;
             $serviceCode = 'MOBILE_LEGENDS_257_DIAMONDS';
         } elseif ($diamondAmount === 275 || $skuValue === '43') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 43;
             $serviceCode = 'MOBILE_LEGENDS_275_DIAMONDS';
         } elseif ($diamondAmount === 343 || $skuValue === '44') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 44;
             $serviceCode = 'MOBILE_LEGENDS_343_DIAMONDS';
         } elseif ($diamondAmount === 429 || $skuValue === '429' || $skuValue === '430') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 430;
             $serviceCode = 'MOBILE_LEGENDS_429_DIAMONDS';
         } elseif ($diamondAmount === 514 || $skuValue === '514' || $skuValue === '516') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 516;
             $serviceCode = 'MOBILE_LEGENDS_514_DIAMONDS';
         } elseif ($diamondAmount === 706 || $skuValue === '706') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 706;
             $serviceCode = 'MOBILE_LEGENDS_706_DIAMONDS';
         } elseif ($diamondAmount === 792 || $skuValue === '792') {
-            $productId = 3;
+            $productId = 3449;
             $serviceId = 792;
             $serviceCode = 'MOBILE_LEGENDS_792_DIAMONDS';
         }
@@ -374,10 +377,10 @@ class TopupService
         }
         // 5. Fallback defaults
         elseif (! empty($skuValue) && is_numeric($skuValue)) {
-            $productId = $order->game?->api_game_id ?: 3;
+            $productId = $order->game?->api_game_id ?: 3449;
             $serviceId = (int) $skuValue;
         } else {
-            $productId = $order->game?->api_game_id ?: 3;
+            $productId = $order->game?->api_game_id ?: 3449;
             $serviceCode = 'MOBILE_LEGENDS_55_DIAMONDS';
             $serviceId = 38;
         }
