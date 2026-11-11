@@ -4,6 +4,7 @@ use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\KhqrPaymentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
@@ -81,6 +82,15 @@ Route::post('/settings/test-camera-photo', [SettingController::class, 'testCamer
 Route::post('/settings/report-intruder-photo', [SettingController::class, 'reportIntruderPhoto']);
 Route::post('/settings/test-gmail', [SettingController::class, 'testGmail']);
 Route::post('/settings/test-flash-topup', [SettingController::class, 'testFlashTopUp']);
+
+// Database Management & Dynamic Switcher API
+Route::prefix('admin/database')->group(function () {
+    Route::get('/status', [DatabaseController::class, 'status']);
+    Route::post('/test', [DatabaseController::class, 'testConnection']);
+    Route::post('/update', [DatabaseController::class, 'updateConnection']);
+    Route::post('/backup', [DatabaseController::class, 'triggerBackup']);
+    Route::post('/restore', [DatabaseController::class, 'restoreBackup']);
+});
 
 // Top-up Game Store (Public API)
 Route::prefix('topup')->group(function () {
