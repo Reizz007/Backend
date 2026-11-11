@@ -57,24 +57,32 @@ class DatabaseController extends Controller
             $error = $e->getMessage();
         }
 
-        $backupDir = storage_path('backups');
+        $backupDirs = [
+            storage_path('backups'),
+            database_path('backups'),
+        ];
         $backups = [];
-        if (is_dir($backupDir)) {
-            $files = scandir($backupDir);
-            foreach ($files as $file) {
-                if ($file !== '.' && $file !== '..' && $file !== '.gitignore') {
-                    $filePath = "{$backupDir}/{$file}";
-                    $backups[] = [
-                        'name' => $file,
-                        'size' => round(filesize($filePath) / 1024, 2).' KB',
-                        'modified' => date('Y-m-d H:i:s', filemtime($filePath)),
-                        'is_sql' => str_ends_with($file, '.sql'),
-                        'is_json' => str_ends_with($file, '.json'),
-                    ];
+        $seen = [];
+
+        foreach ($backupDirs as $dir) {
+            if (is_dir($dir)) {
+                $files = scandir($dir);
+                foreach ($files as $file) {
+                    if ($file !== '.' && $file !== '..' && $file !== '.gitignore' && ! isset($seen[$file])) {
+                        $filePath = "{$dir}/{$file}";
+                        $seen[$file] = true;
+                        $backups[] = [
+                            'name' => $file,
+                            'size' => round(filesize($filePath) / 1024, 2).' KB',
+                            'modified' => date('Y-m-d H:i:s', filemtime($filePath)),
+                            'is_sql' => str_ends_with($file, '.sql'),
+                            'is_json' => str_ends_with($file, '.json'),
+                        ];
+                    }
                 }
             }
-            usort($backups, fn ($a, $b) => strcmp($b['modified'], $a['modified']));
         }
+        usort($backups, fn ($a, $b) => strcmp($b['modified'], $a['modified']));
 
         return response()->json([
             'success' => true,
@@ -324,33 +332,47 @@ class DatabaseController extends Controller
     }
 
     /**
-     * Restore database from an existing backup file.
+     * Restore database from an existing backup file or uploaded file.
      */
     public function restoreBackup(Request $request): JsonResponse
     {
         $filename = (string) $request->input('filename', '');
-        $backupDir = storage_path('backups');
+        $filePath = null;
 
-        if (empty($filename)) {
-            // Find latest .sql file
-            $files = glob("{$backupDir}/*.sql");
-            if (empty($files)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No SQL backup file found in storage/backups.',
-                ], 404);
+        // Support direct file upload from admin browser
+        if ($request->hasFile('sql_file')) {
+            $uploaded = $request->file('sql_file');
+            $filePath = $uploaded->getRealPath();
+            $filename = $uploaded->getClientOriginalName();
+        } elseif (! empty($filename)) {
+            $candidates = [
+                storage_path('backups/'.basename($filename)),
+                database_path('backups/'.basename($filename)),
+            ];
+            foreach ($candidates as $cand) {
+                if (file_exists($cand)) {
+                    $filePath = $cand;
+                    break;
+                }
             }
-            usort($files, fn ($a, $b) => filemtime($b) - filemtime($a));
-            $filePath = $files[0];
-            $filename = basename($filePath);
         } else {
-            $filePath = "{$backupDir}/".basename($filename);
+            // Find latest .sql file from all candidate directories
+            $candidates = array_merge(
+                glob(database_path('backups/*.sql')) ?: [],
+                glob(storage_path('backups/*.sql')) ?: []
+            );
+
+            if (! empty($candidates)) {
+                usort($candidates, fn ($a, $b) => filemtime($b) - filemtime($a));
+                $filePath = $candidates[0];
+                $filename = basename($filePath);
+            }
         }
 
-        if (! file_exists($filePath)) {
+        if (! $filePath || ! file_exists($filePath)) {
             return response()->json([
                 'success' => false,
-                'message' => "Backup file '{$filename}' not found.",
+                'message' => 'No SQL backup file found on server. Please upload a .sql file or run a backup first.',
             ], 404);
         }
 
@@ -358,11 +380,15 @@ class DatabaseController extends Controller
             $sql = file_get_contents($filePath);
             DB::unprepared($sql);
 
-            AuditLog::record(
-                action: 'DATABASE_BACKUP_RESTORED',
-                details: "Restored database from {$filename}",
-                request: $request
-            );
+            try {
+                AuditLog::record(
+                    action: 'DATABASE_BACKUP_RESTORED',
+                    details: "Restored database from {$filename}",
+                    request: $request
+                );
+            } catch (Throwable) {
+                // Ignore if audit_logs table was recreated during restore
+            }
 
             return response()->json([
                 'success' => true,
