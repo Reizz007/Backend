@@ -252,7 +252,8 @@ class TopupService
         $packageName = strtolower($order->package?->name ?? '');
         $gameCode = strtolower($order->game?->code ?? '');
 
-        $productId = 3;
+        $productId = 3449;
+        $productCode = 'TOPUP_MOBILE_LEGENDS';
         $serviceId = null;
         $serviceCode = null;
 
@@ -260,18 +261,22 @@ class TopupService
         if (str_starts_with($skuValue, 'TOPUP_') || str_starts_with($skuValue, 'MOBILE_LEGENDS_')) {
             $serviceCode = $skuValue;
             $productId = $order->game?->api_game_id ?: 3449;
+            $productCode = $productId === 3454 ? 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE' : 'TOPUP_MOBILE_LEGENDS';
         } elseif (str_contains($skuValue, '|')) {
             $parts = explode('|', $skuValue);
             $productId = (int) trim($parts[0]);
             $serviceCode = trim($parts[1]);
+            $productCode = $productId === 3454 ? 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE' : 'TOPUP_MOBILE_LEGENDS';
         }
         // 2. Mobile Legends Exclusive / Small Denominations (Product 3454: 5, 11, 22, 33 Diamonds)
         elseif ($diamondAmount === 5 || $skuValue === '267') {
             $productId = 3454;
+            $productCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE';
             $serviceId = 57041;
             $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_5_DIAMONDS';
         } elseif ($diamondAmount === 11 || $skuValue === '139' || $skuValue === '268') {
             $productId = 3454;
+            $productCode = 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE';
             $serviceId = 57042;
             $serviceCode = 'MOBILE_LEGENDS_EXCLUSIVE_11_DIAMONDS';
         } elseif ($diamondAmount === 22) {
@@ -392,6 +397,7 @@ class TopupService
 
         $orderBody = [
             'product_id' => (int) $productId,
+            'product_code' => $productCode ?: ($productId === 3454 ? 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE' : 'TOPUP_MOBILE_LEGENDS'),
             'quantity' => 1,
             'reference_id' => (string) $order->order_no,
             'server_id' => (string) trim($order->zone_id ?? ''),
