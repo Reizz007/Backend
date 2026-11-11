@@ -9,6 +9,10 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET NAMES utf8mb4;
 SET time_zone = "+00:00";
 
+-- Select target database
+CREATE DATABASE IF NOT EXISTS `dyzzstore`;
+USE `dyzzstore`;
+
 
 -- --------------------------------------------------------
 -- Table structure for table `audit_logs`
