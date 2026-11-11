@@ -221,17 +221,25 @@ class DatabaseController extends Controller
             ], 400);
         }
 
-        // 2. Update .env file
-        $envPath = base_path('.env');
-        if (! file_exists($envPath)) {
-            return response()->json([
-                'success' => false,
-                'message' => '.env file not found.',
-            ], 500);
+        // 2. Persist new connection config to storage/app/db_connection.json
+        $storageAppDir = storage_path('app');
+        if (! is_dir($storageAppDir)) {
+            mkdir($storageAppDir, 0755, true);
         }
+        $dbConfigPath = storage_path('app/db_connection.json');
+        file_put_contents($dbConfigPath, json_encode([
+            'driver' => $driver,
+            'host' => $host,
+            'port' => $port,
+            'database' => $database,
+            'username' => $username,
+            'password' => $password,
+            'updated_at' => date('c'),
+        ], JSON_PRETTY_PRINT));
 
-        $envContent = file_get_contents($envPath);
-
+        // 3. Update or create .env file if filesystem permits
+        $envPath = base_path('.env');
+        $envContent = file_exists($envPath) ? (string) file_get_contents($envPath) : '';
         $replacements = [
             'DB_CONNECTION' => $driver,
             'DB_HOST' => $host,
@@ -250,21 +258,36 @@ class DatabaseController extends Controller
             }
         }
 
-        file_put_contents($envPath, $envContent);
+        @file_put_contents($envPath, $envContent);
 
-        // 3. Clear config cache
+        // 4. Dynamically reconfigure live application runtime
+        config([
+            'database.default' => $driver,
+            "database.connections.{$driver}.host" => $host,
+            "database.connections.{$driver}.port" => $port,
+            "database.connections.{$driver}.database" => $database,
+            "database.connections.{$driver}.username" => $username,
+            "database.connections.{$driver}.password" => $password,
+        ]);
+        DB::purge($driver);
+
+        // 5. Clear config cache
         try {
             Artisan::call('config:clear');
         } catch (Throwable) {
             // Safe to ignore if config not cached
         }
 
-        // 4. Record audit log
-        AuditLog::record(
-            action: 'DATABASE_CONNECTION_UPDATED',
-            details: "Database switched to {$driver}://{$username}@{$host}:{$port}/{$database}",
-            request: $request
-        );
+        // 6. Record audit log
+        try {
+            AuditLog::record(
+                action: 'DATABASE_CONNECTION_UPDATED',
+                details: "Database switched to {$driver}://{$username}@{$host}:{$port}/{$database}",
+                request: $request
+            );
+        } catch (Throwable) {
+            // Safe if audit log table not yet migrated on fresh DB
+        }
 
         return response()->json([
             'success' => true,
