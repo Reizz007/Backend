@@ -548,12 +548,19 @@ class TopupController extends Controller
     public function flashCatalog(Request $request): JsonResponse
     {
         $productId = (int) $request->input('product_id', 3454);
-        $services = $this->topupService->callFlashApi('GET', "/api/reseller/v2/services?product_id={$productId}");
+        $productCode = $request->input('product_code', 'TOPUP_MOBILE_LEGENDS_EXCLUSIVE');
+
+        $postServices = $this->topupService->callFlashApi('POST', '/api/reseller/v2/services', [
+            'product_id' => $productId,
+            'product_code' => $productCode,
+        ]);
+
+        $getProduct = $this->topupService->callFlashApi('GET', "/api/reseller/v2/products/{$productId}");
 
         return response()->json([
             'success' => true,
-            'product_id' => $productId,
-            'services' => $services,
+            'post_services' => $postServices,
+            'get_product' => $getProduct,
         ]);
     }
 
