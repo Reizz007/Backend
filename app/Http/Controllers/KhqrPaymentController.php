@@ -66,27 +66,32 @@ class KhqrPaymentController extends Controller
         // Generate dynamic payment via service (valid signed SHA1 for khqr.cc with success_url)
         $payment = $this->khqrService->createPayment($amount, $transactionId, $remark, $successUrl);
 
-        // Pre-create or record Order in database
-        $order = Order::updateOrCreate(
-            ['order_number' => $transactionId],
-            [
-                'customer_name' => $validated['customerName'] ?? 'Valued Customer',
-                'customer_email' => $validated['customerEmail'] ?? 'customer@synapse.ai',
-                'company' => $validated['company'] ?? '',
-                'items' => is_array($validated['items'] ?? null) ? $validated['items'] : [$validated['items'] ?? 'AI Suite License'],
-                'amount' => $amount,
-                'payment_method' => $methodTitle,
-                'aba_link' => $payment['checkout_url'],
-                'status' => 'Pending Payment',
-                'api_key' => 'sk_synapse_live_'.Str::random(28),
-            ]
-        );
-
-        // Send Telegram alert for new payment request
+        // Pre-create or record Order in database (graceful fallback if DB is empty or migrating)
+        $order = null;
         try {
-            TelegramService::sendOrderAlert($order, 'New KHQR Payment Created');
-        } catch (\Throwable $e) {
-            // graceful fallback
+            $order = Order::updateOrCreate(
+                ['order_number' => $transactionId],
+                [
+                    'customer_name' => $validated['customerName'] ?? 'Valued Customer',
+                    'customer_email' => $validated['customerEmail'] ?? 'customer@synapse.ai',
+                    'company' => $validated['company'] ?? '',
+                    'items' => is_array($validated['items'] ?? null) ? $validated['items'] : [$validated['items'] ?? 'AI Suite License'],
+                    'amount' => $amount,
+                    'payment_method' => $methodTitle,
+                    'aba_link' => $payment['checkout_url'],
+                    'status' => 'Pending Payment',
+                    'api_key' => 'sk_synapse_live_'.Str::random(28),
+                ]
+            );
+
+            // Send Telegram alert for new payment request
+            try {
+                TelegramService::sendOrderAlert($order, 'New KHQR Payment Created');
+            } catch (Throwable) {
+                // graceful fallback
+            }
+        } catch (Throwable) {
+            // If orders table is not yet created, don't block payment link generation
         }
 
         return response()->json([
@@ -102,8 +107,8 @@ class KhqrPaymentController extends Controller
             'checkout_url' => $payment['checkout_url'],
             'iframe_url' => $payment['iframe_url'],
             'success_url' => $payment['success_url'] ?? $successUrl,
-            'order_id' => $order->id,
-            'order_number' => $order->order_number,
+            'order_id' => $order?->id ?? 0,
+            'order_number' => $order?->order_number ?? $transactionId,
             'order' => $order,
             'created_at' => $payment['created_at'],
         ]);

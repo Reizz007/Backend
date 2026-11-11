@@ -279,14 +279,27 @@ class DatabaseController extends Controller
         ]);
         DB::purge($driver);
 
-        // 5. Clear config cache
+        // 5. If new database is completely empty, auto-restore bundled snapshot
+        try {
+            $tableCount = count(DB::select('SHOW TABLES'));
+            if ($tableCount === 0) {
+                $bundled = database_path('backups/latest_backup.sql');
+                if (file_exists($bundled)) {
+                    DB::unprepared((string) file_get_contents($bundled));
+                }
+            }
+        } catch (Throwable) {
+            // Safe fallback
+        }
+
+        // 6. Clear config cache
         try {
             Artisan::call('config:clear');
         } catch (Throwable) {
             // Safe to ignore if config not cached
         }
 
-        // 6. Record audit log
+        // 7. Record audit log
         try {
             AuditLog::record(
                 action: 'DATABASE_CONNECTION_UPDATED',
