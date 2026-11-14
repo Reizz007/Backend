@@ -79,6 +79,11 @@ class SettingController extends Controller
 
         // Admin Profile & Security
         $adminEmail = Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'));
+        $rawAdminList = Setting::get('admin_access_emails', []);
+        if (is_string($rawAdminList)) {
+            $rawAdminList = json_decode($rawAdminList, true) ?: [];
+        }
+        $adminAccessList = is_array($rawAdminList) ? array_values($rawAdminList) : [];
 
         // Topup & FlashTopUp Gateway Configuration
         $topupPaymentMethod = Setting::get('topup_payment_method', env('PAYMENT_METHOD', 'payway'));
@@ -162,6 +167,7 @@ class SettingController extends Controller
             'plasgateSenderId' => $plasgateSenderId,
             'plasgateEnabled' => $plasgateEnabled,
             'adminEmail' => $adminEmail,
+            'adminAccessList' => $adminAccessList,
             'mailUsername' => $mailUsername,
             'mailPassword' => $safeMailPassword,
             'mailFromName' => $mailFromName,
@@ -797,5 +803,134 @@ class SettingController extends Controller
                 'message' => 'Gmail SMTP error: '.$e->getMessage().'. Make sure you use a 16-character Google App Password (not your normal Gmail password).',
             ], 400);
         }
+    }
+
+    /**
+     * Grant administrator login access to an additional email account.
+     */
+    public function addAdminAccess(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'role' => 'nullable|string|in:admin,manager,staff',
+            'password' => 'nullable|string|min:4',
+            'name' => 'nullable|string|max:80',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $roleLabel = $validated['role'] ?? 'admin';
+        $displayName = trim((string) ($validated['name'] ?? '')) ?: explode('@', $email)[0];
+
+        $rawList = Setting::get('admin_access_emails', []);
+        if (is_string($rawList)) {
+            $rawList = json_decode($rawList, true) ?: [];
+        }
+        $list = is_array($rawList) ? $rawList : [];
+
+        $exists = false;
+        foreach ($list as &$item) {
+            $itemEmail = is_array($item) ? strtolower(trim((string) ($item['email'] ?? ''))) : strtolower(trim((string) $item));
+            if ($itemEmail === $email) {
+                $item = [
+                    'email' => $email,
+                    'name' => $displayName,
+                    'role' => $roleLabel,
+                    'added_at' => $item['added_at'] ?? now()->toIso8601String(),
+                ];
+                $exists = true;
+                break;
+            }
+        }
+        unset($item);
+
+        if (! $exists) {
+            $list[] = [
+                'email' => $email,
+                'name' => $displayName,
+                'role' => $roleLabel,
+                'added_at' => now()->toIso8601String(),
+            ];
+        }
+
+        Setting::set('admin_access_emails', json_encode(array_values($list)));
+
+        // Sync or create User record with admin role
+        $user = User::firstOrNew(['email' => $email]);
+        $user->name = $user->exists && ! empty($user->name) ? $user->name : $displayName;
+        $user->role = 'admin';
+        if (! empty($validated['password'])) {
+            $user->password = Hash::make($validated['password']);
+        } elseif (! $user->exists) {
+            $user->password = Hash::make('admin123');
+        }
+        $user->save();
+
+        AuditLog::record(
+            action: 'ADMIN_ACCESS_GRANTED',
+            entityType: 'Security',
+            description: "Granted admin login access ({$roleLabel}) to {$email}",
+            entityId: $email,
+            entityName: $displayName,
+            request: $request
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Admin access granted to {$email} ({$roleLabel})!",
+            'adminAccessList' => array_values($list),
+        ]);
+    }
+
+    /**
+     * Revoke administrator login access for an additional email account.
+     */
+    public function removeAdminAccess(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $protected = ['chetranicky@gmail.com', 'admin@synapse.ai', 'admin@dyzzstore.com'];
+        if (in_array($email, $protected, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot revoke built-in Master Admin account.',
+            ], 422);
+        }
+
+        $rawList = Setting::get('admin_access_emails', []);
+        if (is_string($rawList)) {
+            $rawList = json_decode($rawList, true) ?: [];
+        }
+        $list = is_array($rawList) ? $rawList : [];
+
+        $filtered = array_values(array_filter($list, function ($item) use ($email) {
+            $itemEmail = is_array($item) ? strtolower(trim((string) ($item['email'] ?? ''))) : strtolower(trim((string) $item));
+
+            return $itemEmail !== $email;
+        }));
+
+        Setting::set('admin_access_emails', json_encode($filtered));
+
+        $user = User::where('email', $email)->first();
+        if ($user) {
+            $user->role = 'user';
+            $user->save();
+        }
+
+        AuditLog::record(
+            action: 'ADMIN_ACCESS_REVOKED',
+            entityType: 'Security',
+            description: "Revoked admin login access from {$email}",
+            entityId: $email,
+            request: $request
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Admin access revoked for {$email}.",
+            'adminAccessList' => $filtered,
+        ]);
     }
 }

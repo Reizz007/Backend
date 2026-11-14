@@ -106,8 +106,7 @@ class AuthController extends Controller
         ";
 
         $telegramSent = false;
-        $adminEmail = strtolower(trim((string) env('ADMIN_EMAIL', 'chetranicky@gmail.com')));
-        $isAdminTarget = ($email === $adminEmail || $email === 'chetranicky@gmail.com' || str_contains($email, 'admin'));
+        $isAdminTarget = $this->isAuthorizedAdminEmail($email) || str_contains($email, 'admin');
 
         // Proactively send OTP directly to Telegram bot if admin target or Telegram is enabled
         if ($isAdminTarget || Setting::get('telegram_enabled', true)) {
@@ -240,17 +239,19 @@ class AuthController extends Controller
             }
         } else {
             $userEmail = $target;
-            $isAdmin = ($userEmail === $adminEmail) || ($userEmail === 'chetranicky@gmail.com') || ($userEmail === 'admin@synapse.ai') || ($userEmail === 'admin@dyzzstore.com');
+            $isAdmin = $this->isAuthorizedAdminEmail($userEmail);
             $user = User::firstOrNew(['email' => $userEmail]);
             if (! $user->exists) {
-                $user->name = $isAdmin ? 'Master Admin' : explode('@', $userEmail)[0];
+                $user->name = $isAdmin ? 'Admin' : explode('@', $userEmail)[0];
                 $user->password = Hash::make(Str::random(32));
             }
         }
 
         if ($isAdmin) {
             $user->role = 'admin';
-            $user->name = 'Master Admin';
+            if (empty($user->name) || $user->name === 'Master Admin') {
+                $user->name = ($userEmail === 'chetranicky@gmail.com') ? 'Master Admin' : 'Admin';
+            }
         } elseif (empty($user->role)) {
             $user->role = 'user';
         }
@@ -352,7 +353,7 @@ class AuthController extends Controller
         $inputEmail = ($rawEmail === 'admin') ? 'admin@synapse.ai' : $rawEmail;
         $inputPassword = (string) $validated['password'];
 
-        $isAdmin = ($inputEmail === $adminEmail || $inputEmail === 'admin@synapse.ai' || $inputEmail === 'admin@dyzzstore.com' || $inputEmail === 'chetranicky@gmail.com');
+        $isAdmin = $this->isAuthorizedAdminEmail($inputEmail);
 
         $user = User::where('email', $inputEmail)->first();
 
@@ -508,6 +509,38 @@ class AuthController extends Controller
             'settings_hidden' => $settingsHidden,
             'single_device_locked' => $singleDeviceLocked,
         ];
+    }
+
+    /**
+     * Check whether an email is authorized for Administrator access.
+     */
+    private function isAuthorizedAdminEmail(string $email): bool
+    {
+        $normalized = strtolower(trim($email));
+        if ($normalized === '') {
+            return false;
+        }
+
+        $primaryAdmin = strtolower(trim((string) Setting::get('admin_email', env('ADMIN_EMAIL', 'chetranicky@gmail.com'))));
+        $builtIn = ['chetranicky@gmail.com', 'admin@synapse.ai', 'admin@dyzzstore.com'];
+        if ($normalized === $primaryAdmin || in_array($normalized, $builtIn, true)) {
+            return true;
+        }
+
+        $dynamicList = Setting::get('admin_access_emails', []);
+        if (is_string($dynamicList)) {
+            $dynamicList = json_decode($dynamicList, true) ?: [];
+        }
+        if (is_array($dynamicList)) {
+            foreach ($dynamicList as $entry) {
+                $entryEmail = is_array($entry) ? strtolower(trim((string) ($entry['email'] ?? ''))) : strtolower(trim((string) $entry));
+                if ($entryEmail === $normalized) {
+                    return true;
+                }
+            }
+        }
+
+        return User::where('email', $normalized)->where('role', 'admin')->exists();
     }
 
     public function me(Request $request): JsonResponse

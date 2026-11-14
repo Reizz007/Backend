@@ -82,6 +82,8 @@ Route::post('/settings/test-camera-photo', [SettingController::class, 'testCamer
 Route::post('/settings/report-intruder-photo', [SettingController::class, 'reportIntruderPhoto']);
 Route::post('/settings/test-gmail', [SettingController::class, 'testGmail']);
 Route::post('/settings/test-flash-topup', [SettingController::class, 'testFlashTopUp']);
+Route::post('/admin/access/add', [SettingController::class, 'addAdminAccess']);
+Route::post('/admin/access/remove', [SettingController::class, 'removeAdminAccess']);
 
 // Database Management & Dynamic Switcher API
 Route::prefix('admin/database')->group(function () {
